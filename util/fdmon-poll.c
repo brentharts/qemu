@@ -9,6 +9,52 @@
 #include "aio-posix.h"
 #include "qemu/rcu_queue.h"
 
+#ifdef NO_THREAD_LOCAL
+#define MAX_POLLFDS 1024 // Adjust this value based on expected number of FDs
+static GPollFD pollfds[MAX_POLLFDS];
+static AioHandler *nodes[MAX_POLLFDS];
+static unsigned npfd = 0;
+static Notifier pollfds_cleanup_notifier;
+
+static void pollfds_cleanup(Notifier *n, void *unused) { g_assert(npfd == 0); }
+
+static void add_pollfd(AioHandler *node) {
+	if (npfd == MAX_POLLFDS) return;
+	nodes[npfd] = node;
+	pollfds[npfd] = (GPollFD) {
+		.fd = node->pfd.fd,
+		.events = node->pfd.events,
+	};
+	npfd++;
+}
+
+static int fdmon_poll_wait(AioContext *ctx, AioHandlerList *ready_list, int64_t timeout) {
+	AioHandler *node;
+	int i, ret;
+	npfd = 0; // Reset npfd before iterating through handlers
+	QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
+		if (!QLIST_IS_INSERTED(node, node_deleted) && node->pfd.events) {
+			add_pollfd(node);
+		}
+	}
+	/* epoll(7) is faster above a certain number of fds */
+	if (fdmon_epoll_try_upgrade(ctx, npfd)) {
+		return ctx->fdmon_ops->wait(ctx, ready_list, timeout);
+	}
+	ret = qemu_poll_ns(pollfds, npfd, timeout);
+	if (ret > 0) {
+		for (i = 0; i < npfd; i++) {
+			int revents = pollfds[i].revents;
+			if (revents) {
+				aio_add_ready_handler(ready_list, nodes[i], revents);
+			}
+		}
+	}
+	npfd = 0;
+	return ret;
+}
+
+#else
 /*
  * These thread-local variables are used only in fdmon_poll_wait() around the
  * call to the poll() system call.  In particular they are not used while
@@ -92,6 +138,7 @@ static int fdmon_poll_wait(AioContext *ctx, AioHandlerList *ready_list,
     npfd = 0;
     return ret;
 }
+#endif
 
 static void fdmon_poll_update(AioContext *ctx,
                               AioHandler *old_node,
