@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 # qemu.py: by Brent Hartshorn
-import os, sys, subprocess
+import os, sys, subprocess, json
+
+target = 'riscv64-softmmu'
+if 'riscv32' in sys.argv: target = 'riscv64-softmmu'
+LIBQEMU = '/tmp/libqemu_%s.so' % target
+
+stubs = 'stubs_target-get-monitor-def fw_cfg.c xen-hw-stub.c'.split()
+stubs = [ os.path.join('../stubs', c) for c in stubs]
+print('allowed stubs:', stubs)
 
 keep = [
 	'tcg',  ## accelerator for riscv on x86, 'kvm' should be used on riscv hardware
-	'fdt', 'pie', 'system', 'user', 'linux-user', 'sdl', 'sdl-image', 'png', 'pixman', 
+	'fdt', 'pie', 'system', #'user', #'linux-user', 
+	'sdl', 'sdl-image', 'png', #'pixman', 
 	'avx2', 'avx512bw','malloc-trim', 'membarrier'
 ]
 
@@ -18,13 +27,12 @@ def get_features():
 		if type(feats) is list and ln.strip():
 			if ln.startswith( ('      ', 'NOTE') ): continue  ## some bad formatting in the output
 			name = ln.strip().split()[0]
-			#print(name)
 			assert name not in feats
 			feats.append(name)
 	return feats
 
+#if not os.path.isdir('./build') or '--build' in sys.argv or not os.path.isfile(LIBQEMU):
 if not os.path.isdir('./build') or '--build' in sys.argv:
-	target = 'riscv64-softmmu'
 	cmd = [
 		'./configure', 
 		'--target-list=%s' % target, 
@@ -36,5 +44,24 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 		cmd.append('--disable-%s' % feat)
 	print(cmd)
 	subprocess.check_call(cmd)
-	cmd = ['make', '-j', '1']
+	cmd = ['make', '-j', '3']
+	#cmd = ['make', '-j', '1', 'VERBOSE=1', 'meson="meson --verbose"']
+	#os.environ['MESON_LOG_LEVEL'] = 'debug'
 	subprocess.check_call(cmd)
+
+def get_o_files():
+	obs = []
+	a = json.loads( open('./build/compile_commands.json','rb').read().decode('utf-8') )
+	for b in a:
+		if b['file'] in stubs: pass
+		elif b['file'].startswith('../stubs/'): continue
+		elif b['output'].startswith('tests/'): continue
+		p = os.path.join('./build', b['output'])
+		if os.path.isfile(p): obs.append( p )
+	print(obs)
+	return obs
+
+cmd = ['gcc', '-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
+#print(cmd)
+#subprocess.check_call(cmd)
+os.system(' '.join(cmd))
