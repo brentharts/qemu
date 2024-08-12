@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # qemu.py: by Brent Hartshorn
-import os, sys, subprocess, json
+import os, sys, subprocess, json, ctypes
 
 target = 'riscv64-softmmu'
 if 'riscv32' in sys.argv: target = 'riscv64-softmmu'
 LIBQEMU = '/tmp/libqemu_%s.so' % target
 
-stubs = 'stubs_target-get-monitor-def fw_cfg.c xen-hw-stub.c'.split()
+stubs = 'target-get-monitor-def.c target-monitor-defs.c fw_cfg.c xen-hw-stub.c'.split()
 stubs = [ os.path.join('../stubs', c) for c in stubs]
+skip = ['../subprojects/libvhost-user/link-test.c']
 print('allowed stubs:', stubs)
 
 keep = [
 	'tcg',  ## accelerator for riscv on x86, 'kvm' should be used on riscv hardware
-	'fdt', 'pie', 'system', #'user', #'linux-user', 
+	'fdt', 'pie', 'system', 'user', #'linux-user', 
 	'sdl', 'sdl-image', 'png', #'pixman', 
-	'avx2', 'avx512bw','malloc-trim', 'membarrier'
+	'avx2', 'avx512bw','malloc-trim', 'membarrier',
+	'vhost-user', #'vhost-kernel',
 ]
 
 def get_features():
@@ -31,7 +33,6 @@ def get_features():
 			feats.append(name)
 	return feats
 
-#if not os.path.isdir('./build') or '--build' in sys.argv or not os.path.isfile(LIBQEMU):
 if not os.path.isdir('./build') or '--build' in sys.argv:
 	cmd = [
 		'./configure', 
@@ -45,8 +46,6 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 	print(cmd)
 	subprocess.check_call(cmd)
 	cmd = ['make', '-j', '3']
-	#cmd = ['make', '-j', '1', 'VERBOSE=1', 'meson="meson --verbose"']
-	#os.environ['MESON_LOG_LEVEL'] = 'debug'
 	subprocess.check_call(cmd)
 
 def get_o_files():
@@ -56,12 +55,17 @@ def get_o_files():
 		if b['file'] in stubs: pass
 		elif b['file'].startswith('../stubs/'): continue
 		elif b['output'].startswith('tests/'): continue
+		elif b['file'] in skip: continue
 		p = os.path.join('./build', b['output'])
 		if os.path.isfile(p): obs.append( p )
 	print(obs)
 	return obs
 
-cmd = ['gcc', '-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
-#print(cmd)
-#subprocess.check_call(cmd)
-os.system(' '.join(cmd))
+if not os.path.isfile(LIBQEMU):
+	cmd = ['gcc', '-shared', '-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
+	#subprocess.check_call(cmd)
+	os.system(' '.join(cmd))
+
+qemu = ctypes.CDLL(LIBQEMU)
+print(qemu)
+print(qemu.main)
