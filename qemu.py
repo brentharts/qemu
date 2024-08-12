@@ -4,13 +4,14 @@ import os, sys, subprocess, json, ctypes
 
 target = 'riscv64-softmmu'
 if 'riscv32' in sys.argv: target = 'riscv64-softmmu'
-LIBQEMU = '/tmp/libqemu_%s.so' % target
+if '--shared' in sys.argv:
+	LIBQEMU = '/tmp/libqemu_%s.so' % target
+else:
+	LIBQEMU = '/tmp/qemu_%s' % target
 
 stubs = 'target-get-monitor-def.c target-monitor-defs.c fw_cfg.c xen-hw-stub.c'.split()
 stubs = [ os.path.join('../stubs', c) for c in stubs]
 skip = ['../subprojects/libvhost-user/link-test.c']
-print('allowed stubs:', stubs)
-
 keep = [
 	'tcg',  ## accelerator for riscv on x86, 'kvm' should be used on riscv hardware
 	'fdt', 'pie', 'system', 'user', #'linux-user', 
@@ -37,7 +38,7 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 	cmd = [
 		'./configure', 
 		'--target-list=%s' % target, 
-		'--extra-cflags=-fPIC',
+		'--extra-cflags=-fPIC -DNO_THREAD_LOCAL',
 		'--prefix=/opt',
 	]
 	for feat in get_features():
@@ -62,10 +63,16 @@ def get_o_files():
 	return obs
 
 if not os.path.isfile(LIBQEMU):
-	cmd = ['gcc', '-shared', '-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
+	cmd = ['gcc']
+	if '--shared' in sys.argv: cmd.append('-shared')
+	cmd += ['-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
 	#subprocess.check_call(cmd)
 	os.system(' '.join(cmd))
 
-qemu = ctypes.CDLL(LIBQEMU)
-print(qemu)
-print(qemu.main)
+if '--shared' in sys.argv:
+	qemu = ctypes.CDLL(LIBQEMU)
+	print(qemu)
+	print(qemu.main)
+else:
+	print(LIBQEMU)
+	subprocess.check_call([LIBQEMU]+sys.argv[1:])
