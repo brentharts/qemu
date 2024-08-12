@@ -465,8 +465,12 @@ void qemu_event_wait(QemuEvent *ev)
     }
 }
 
+#ifdef NO_THREAD_LOCAL
+// TODO this breaks the implementation
+static NotifierList thread_exit;
+#else
 static __thread NotifierList thread_exit;
-
+#endif
 /*
  * Note that in this implementation you can register a thread-exit
  * notifier for the main thread, but it will never be called.
