@@ -393,7 +393,7 @@ int gdbserver_start(const char *device)
         reset_gdbserver_state();
     }
 
-    create_processes(&gdbserver_state);
+    create_processes(gdbserver_state);
 
     if (chr) {
         qemu_chr_fe_init(&gdbserver_system_state.chr, chr, &error_abort);
