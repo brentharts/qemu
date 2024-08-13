@@ -34,7 +34,8 @@ static GDBSyscallState gdbserver_syscall_state;
  */
 static bool gdb_attached(void)
 {
-    return gdbserver_state->init && gdbserver_state->c_cpu;
+    if (gdbserver_state) return gdbserver_state->init && gdbserver_state->c_cpu;
+    else return 0;
 }
 
 static enum {
