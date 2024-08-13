@@ -38,8 +38,12 @@ static inline bool trace_event_get_state_static(TraceEvent *ev)
 }
 
 /* it's on fast path, avoid consistency checks (asserts) */
+#ifdef SHARED_LIB
+#define trace_event_get_state_dynamic_by_id(id) (0)
+#else
 #define trace_event_get_state_dynamic_by_id(id) \
     (unlikely(trace_events_enabled_count) && _ ## id ## _DSTATE)
+#endif
 
 static inline bool trace_event_get_state_dynamic(TraceEvent *ev)
 {
