@@ -314,9 +314,11 @@ typedef int PageForEachNext;
     TB_FOR_EACH_TAGGED((pagedesc)->first_tb, tb, n, page_next)
 
 #ifdef CONFIG_DEBUG_TCG
-
-static __thread GHashTable *ht_pages_locked_debug;
-
+    #ifdef NO_THREAD_LOCAL
+    static GHashTable *ht_pages_locked_debug;
+    #else
+    static __thread GHashTable *ht_pages_locked_debug;
+    #endif
 static void ht_pages_locked_debug_init(void)
 {
     if (ht_pages_locked_debug) {
