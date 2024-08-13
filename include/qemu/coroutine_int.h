@@ -30,7 +30,11 @@
 
 #ifdef CONFIG_SAFESTACK
 /* Pointer to the unsafe stack, defined by the compiler */
-extern __thread void *__safestack_unsafe_stack_ptr;
+    #ifdef NO_THREAD_LOCAL
+    extern void *__safestack_unsafe_stack_ptr;
+    #else
+    extern __thread void *__safestack_unsafe_stack_ptr;
+    #endif
 #endif
 
 #define COROUTINE_STACK_SIZE (1 << 20)
