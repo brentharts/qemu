@@ -374,18 +374,18 @@ static int get_mod_state(void)
     }
 }
 
+#ifdef CONFIG_WIN32
 static void *sdl2_win32_get_hwnd(struct sdl2_console *scon)
 {
-#ifdef CONFIG_WIN32
     SDL_SysWMinfo info;
 
     SDL_VERSION(&info.version);
     if (SDL_GetWindowWMInfo(scon->real_window, &info)) {
         return info.info.win.window;
     }
-#endif
     return NULL;
 }
+#endif
 
 static void handle_keydown(SDL_Event *ev)
 {
