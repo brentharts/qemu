@@ -195,8 +195,11 @@ void replay_finish_event(void)
     replay_state.has_unread_data = false;
     replay_fetch_data_kind();
 }
-
+#ifdef NO_THREAD_LOCAL
+static bool replay_locked;
+#else
 static __thread bool replay_locked;
+#endif
 
 void replay_mutex_init(void)
 {
