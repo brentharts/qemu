@@ -38,9 +38,12 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 	cmd = [
 		'./configure', 
 		'--target-list=%s' % target, 
-		'--extra-cflags=-fPIC -DNO_THREAD_LOCAL',
 		'--prefix=/opt',
+		'--with-coroutine=sigaltstack',
+		'--disable-coroutine-pool',
 	]
+	if '--shared' in sys.argv:
+		cmd.append('--extra-cflags=-fPIC -DNO_THREAD_LOCAL -DSHARED_LIB')
 	for feat in get_features():
 		if feat in keep: continue
 		cmd.append('--disable-%s' % feat)
