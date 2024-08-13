@@ -424,8 +424,13 @@ void qapi_event_emit(QAPIEvent event, QDict *qdict)
         QDict *qdict;
         QSIMPLEQ_ENTRY(MonitorQapiEvent) entry;
     } MonitorQapiEvent;
+#ifdef NO_THREAD_LOCAL
+    static QSIMPLEQ_HEAD(, MonitorQapiEvent) event_queue;
+    static bool reentered;
+#else
     static __thread QSIMPLEQ_HEAD(, MonitorQapiEvent) event_queue;
     static __thread bool reentered;
+#endif
     MonitorQapiEvent *ev;
 
     if (!reentered) {
