@@ -169,7 +169,7 @@ void gdb_exit(int code)
 {
     char buf[4];
 
-    if (!gdbserver_state.init) {
+    if (!gdbserver_state->init) {
         return;
     }
     if (gdbserver_user_state.socket_path) {
@@ -181,10 +181,10 @@ void gdb_exit(int code)
 
     trace_gdbstub_op_exiting((uint8_t)code);
 
-    if (gdbserver_state.allow_stop_reply) {
+    if (gdbserver_state->allow_stop_reply) {
         snprintf(buf, sizeof(buf), "W%02x", (uint8_t)code);
         gdb_put_packet(buf);
-        gdbserver_state.allow_stop_reply = false;
+        gdbserver_state->allow_stop_reply = false;
     }
 
 }
@@ -200,7 +200,7 @@ int gdb_handlesig(CPUState *cpu, int sig, const char *reason, void *siginfo,
     char buf[256];
     int n;
 
-    if (!gdbserver_state.init || gdbserver_user_state.fd < 0) {
+    if (!gdbserver_state->init || gdbserver_user_state.fd < 0) {
         return sig;
     }
 
@@ -222,16 +222,16 @@ int gdb_handlesig(CPUState *cpu, int sig, const char *reason, void *siginfo,
 
     if (sig != 0) {
         gdb_set_stop_cpu(cpu);
-        if (gdbserver_state.allow_stop_reply) {
-            g_string_printf(gdbserver_state.str_buf,
+        if (gdbserver_state->allow_stop_reply) {
+            g_string_printf(gdbserver_state->str_buf,
                             "T%02xthread:", gdb_target_signal_to_gdb(sig));
-            gdb_append_thread_id(cpu, gdbserver_state.str_buf);
-            g_string_append_c(gdbserver_state.str_buf, ';');
+            gdb_append_thread_id(cpu, gdbserver_state->str_buf);
+            g_string_append_c(gdbserver_state->str_buf, ';');
             if (reason) {
-                g_string_append(gdbserver_state.str_buf, reason);
+                g_string_append(gdbserver_state->str_buf, reason);
             }
             gdb_put_strbuf();
-            gdbserver_state.allow_stop_reply = false;
+            gdbserver_state->allow_stop_reply = false;
         }
     }
     /*
@@ -243,7 +243,7 @@ int gdb_handlesig(CPUState *cpu, int sig, const char *reason, void *siginfo,
     }
 
     sig = 0;
-    gdbserver_state.state = RS_IDLE;
+    gdbserver_state->state = RS_IDLE;
     gdbserver_user_state.running_state = 0;
     while (gdbserver_user_state.running_state == 0) {
         n = read(gdbserver_user_state.fd, buf, 256);
@@ -265,8 +265,8 @@ int gdb_handlesig(CPUState *cpu, int sig, const char *reason, void *siginfo,
             return sig;
         }
     }
-    sig = gdbserver_state.signal;
-    gdbserver_state.signal = 0;
+    sig = gdbserver_state->signal;
+    gdbserver_state->signal = 0;
     return sig;
 }
 
@@ -275,23 +275,23 @@ void gdb_signalled(CPUArchState *env, int sig)
 {
     char buf[4];
 
-    if (!gdbserver_state.init || gdbserver_user_state.fd < 0 ||
-        !gdbserver_state.allow_stop_reply) {
+    if (!gdbserver_state->init || gdbserver_user_state.fd < 0 ||
+        !gdbserver_state->allow_stop_reply) {
         return;
     }
 
     snprintf(buf, sizeof(buf), "X%02x", gdb_target_signal_to_gdb(sig));
     gdb_put_packet(buf);
-    gdbserver_state.allow_stop_reply = false;
+    gdbserver_state->allow_stop_reply = false;
 }
 
 static void gdb_accept_init(int fd)
 {
     gdb_init_gdbserver_state();
     gdb_create_default_process(&gdbserver_state);
-    gdbserver_state.processes[0].attached = true;
-    gdbserver_state.c_cpu = gdb_first_attached_cpu();
-    gdbserver_state.g_cpu = gdbserver_state.c_cpu;
+    gdbserver_state->processes[0].attached = true;
+    gdbserver_state->c_cpu = gdb_first_attached_cpu();
+    gdbserver_state->g_cpu = gdbserver_state->c_cpu;
     gdbserver_user_state.fd = fd;
 }
 
@@ -434,7 +434,7 @@ int gdbserver_start(const char *port_or_path)
 
 void gdbserver_fork_start(void)
 {
-    if (!gdbserver_state.init || gdbserver_user_state.fd < 0) {
+    if (!gdbserver_state->init || gdbserver_user_state.fd < 0) {
         return;
     }
     if (!gdbserver_user_state.fork_events ||
@@ -467,7 +467,7 @@ void gdbserver_fork_end(CPUState *cpu, pid_t pid)
     char b;
     int fd;
 
-    if (!gdbserver_state.init || gdbserver_user_state.fd < 0) {
+    if (!gdbserver_state->init || gdbserver_user_state.fd < 0) {
         return;
     }
 
@@ -490,11 +490,11 @@ void gdbserver_fork_end(CPUState *cpu, pid_t pid)
     if (pid == 0) {
         close(gdbserver_user_state.fork_sockets[0]);
         fd = gdbserver_user_state.fork_sockets[1];
-        g_assert(gdbserver_state.process_num == 1);
-        g_assert(gdbserver_state.processes[0].pid ==
+        g_assert(gdbserver_state->process_num == 1);
+        g_assert(gdbserver_state->processes[0].pid ==
                      gdbserver_user_state.fork_peer_pid);
-        g_assert(gdbserver_state.processes[0].attached);
-        gdbserver_state.processes[0].pid = getpid();
+        g_assert(gdbserver_state->processes[0].attached);
+        gdbserver_state->processes[0].pid = getpid();
     } else {
         close(gdbserver_user_state.fork_sockets[1]);
         fd = gdbserver_user_state.fork_sockets[0];
@@ -502,18 +502,18 @@ void gdbserver_fork_end(CPUState *cpu, pid_t pid)
         gdbserver_user_state.fork_peer_pid = pid;
         gdbserver_user_state.fork_peer_tid = pid;
 
-        if (!gdbserver_state.allow_stop_reply) {
+        if (!gdbserver_state->allow_stop_reply) {
             goto fail;
         }
-        g_string_printf(gdbserver_state.str_buf,
+        g_string_printf(gdbserver_state->str_buf,
                         "T%02xfork:p%02x.%02x;thread:p%02x.%02x;",
                         gdb_target_signal_to_gdb(gdb_target_sigtrap()),
                         pid, pid, (int)getpid(), qemu_get_thread_id());
         gdb_put_strbuf();
     }
 
-    gdbserver_state.state = RS_IDLE;
-    gdbserver_state.allow_stop_reply = false;
+    gdbserver_state->state = RS_IDLE;
+    gdbserver_state->allow_stop_reply = false;
     gdbserver_user_state.running_state = 0;
     for (;;) {
         switch (gdbserver_user_state.fork_state) {
@@ -589,7 +589,7 @@ void gdb_handle_query_supported_user(const char *gdb_supported)
     if (strstr(gdb_supported, "fork-events+")) {
         gdbserver_user_state.fork_events = true;
     }
-    g_string_append(gdbserver_state.str_buf, ";fork-events+");
+    g_string_append(gdbserver_state->str_buf, ";fork-events+");
 }
 
 bool gdb_handle_set_thread_user(uint32_t pid, uint32_t tid)
@@ -650,7 +650,7 @@ int gdb_continue_partial(char *newstates)
     CPU_FOREACH(cpu) {
         if (newstates[cpu->cpu_index] == 's') {
             trace_gdbstub_op_stepping(cpu->cpu_index);
-            cpu_single_step(cpu, gdbserver_state.sstep_flags);
+            cpu_single_step(cpu, gdbserver_state->sstep_flags);
         }
     }
     gdbserver_user_state.running_state = 1;
@@ -762,7 +762,7 @@ void gdb_breakpoint_remove_all(CPUState *cs)
 void gdb_syscall_handling(const char *syscall_packet)
 {
     gdb_put_packet(syscall_packet);
-    gdb_handlesig(gdbserver_state.c_cpu, 0, NULL, NULL, 0);
+    gdb_handlesig(gdbserver_state->c_cpu, 0, NULL, NULL, 0);
 }
 
 static bool should_catch_syscall(int num)
@@ -871,8 +871,8 @@ void gdb_handle_query_xfer_siginfo(GArray *params, void *user_ctx)
     siginfo_offset = (uint8_t *)gdbserver_user_state.siginfo + offset;
 
     /* Reply */
-    g_string_assign(gdbserver_state.str_buf, "l");
-    gdb_memtox(gdbserver_state.str_buf, (const char *)siginfo_offset, len);
-    gdb_put_packet_binary(gdbserver_state.str_buf->str,
-                          gdbserver_state.str_buf->len, true);
+    g_string_assign(gdbserver_state->str_buf, "l");
+    gdb_memtox(gdbserver_state->str_buf, (const char *)siginfo_offset, len);
+    gdb_put_packet_binary(gdbserver_state->str_buf->str,
+                          gdbserver_state->str_buf->len, true);
 }
