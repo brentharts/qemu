@@ -356,7 +356,11 @@ bool qemu_plugin_mem_is_store(qemu_plugin_meminfo_t info)
  */
 
 #ifdef CONFIG_SOFTMMU
-static __thread struct qemu_plugin_hwaddr hwaddr_info;
+    #ifdef NO_THREAD_LOCAL
+    static struct qemu_plugin_hwaddr hwaddr_info;
+    #else
+    static __thread struct qemu_plugin_hwaddr hwaddr_info;
+    #endif
 #endif
 
 struct qemu_plugin_hwaddr *qemu_plugin_get_hwaddr(qemu_plugin_meminfo_t info,
