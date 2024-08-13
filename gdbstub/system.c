@@ -41,10 +41,10 @@ GDBSystemState gdbserver_system_state;
 
 static void reset_gdbserver_state(void)
 {
-    g_free(gdbserver_state.processes);
-    gdbserver_state.processes = NULL;
-    gdbserver_state.process_num = 0;
-    gdbserver_state.allow_stop_reply = false;
+    g_free(gdbserver_state->processes);
+    gdbserver_state->processes = NULL;
+    gdbserver_state->process_num = 0;
+    gdbserver_state->allow_stop_reply = false;
 }
 
 /*
@@ -115,18 +115,18 @@ static void gdb_chr_event(void *opaque, QEMUChrEvent event)
 void gdb_syscall_handling(const char *syscall_packet)
 {
     vm_stop(RUN_STATE_DEBUG);
-    qemu_cpu_kick(gdbserver_state.c_cpu);
+    qemu_cpu_kick(gdbserver_state->c_cpu);
 }
 
 static void gdb_vm_state_change(void *opaque, bool running, RunState state)
 {
-    CPUState *cpu = gdbserver_state.c_cpu;
+    CPUState *cpu = gdbserver_state->c_cpu;
     g_autoptr(GString) buf = g_string_new(NULL);
     g_autoptr(GString) tid = g_string_new(NULL);
     const char *type;
     int ret;
 
-    if (running || gdbserver_state.state == RS_INACTIVE) {
+    if (running || gdbserver_state->state == RS_INACTIVE) {
         return;
     }
 
@@ -140,7 +140,7 @@ static void gdb_vm_state_change(void *opaque, bool running, RunState state)
         return;
     }
 
-    if (!gdbserver_state.allow_stop_reply) {
+    if (!gdbserver_state->allow_stop_reply) {
         return;
     }
 
@@ -210,7 +210,7 @@ static void gdb_vm_state_change(void *opaque, bool running, RunState state)
 
 send_packet:
     gdb_put_packet(buf->str);
-    gdbserver_state.allow_stop_reply = false;
+    gdbserver_state->allow_stop_reply = false;
 
     /* disable single step if it was enabled */
     cpu_single_step(cpu, 0);
@@ -319,11 +319,11 @@ static void create_processes(GDBState *s)
 {
     object_child_foreach(object_get_root(), find_cpu_clusters, s);
 
-    if (gdbserver_state.processes) {
+    if (gdbserver_state->processes) {
         /* Sort by PID */
-        qsort(gdbserver_state.processes,
-              gdbserver_state.process_num,
-              sizeof(gdbserver_state.processes[0]),
+        qsort(gdbserver_state->processes,
+              gdbserver_state->process_num,
+              sizeof(gdbserver_state->processes[0]),
               pid_order);
     }
 
@@ -378,7 +378,7 @@ int gdbserver_start(const char *device)
         }
     }
 
-    if (!gdbserver_state.init) {
+    if (!gdbserver_state->init) {
         gdb_init_gdbserver_state();
 
         qemu_add_vm_change_state_handler(gdb_vm_state_change, NULL);
@@ -402,7 +402,7 @@ int gdbserver_start(const char *device)
                                  gdb_chr_receive, gdb_chr_event,
                                  NULL, &gdbserver_state, NULL, true);
     }
-    gdbserver_state.state = chr ? RS_IDLE : RS_INACTIVE;
+    gdbserver_state->state = chr ? RS_IDLE : RS_INACTIVE;
     gdbserver_system_state.mon_chr = mon_chr;
     gdb_syscall_reset();
 
@@ -421,16 +421,16 @@ void gdb_exit(int code)
 {
     char buf[4];
 
-    if (!gdbserver_state.init) {
+    if (!gdbserver_state->init) {
         return;
     }
 
     trace_gdbstub_op_exiting((uint8_t)code);
 
-    if (gdbserver_state.allow_stop_reply) {
+    if (gdbserver_state->allow_stop_reply) {
         snprintf(buf, sizeof(buf), "W%02x", (uint8_t)code);
         gdb_put_packet(buf);
-        gdbserver_state.allow_stop_reply = false;
+        gdbserver_state->allow_stop_reply = false;
     }
 
     qemu_chr_fe_deinit(&gdbserver_system_state.chr, true);
@@ -491,7 +491,7 @@ bool gdb_can_reverse(void)
 void gdb_handle_query_qemu_phy_mem_mode(GArray *params,
                                         void *ctx)
 {
-    g_string_printf(gdbserver_state.str_buf, "%d", phy_memory_mode);
+    g_string_printf(gdbserver_state->str_buf, "%d", phy_memory_mode);
     gdb_put_strbuf();
 }
 
@@ -526,13 +526,13 @@ void gdb_handle_query_rcmd(GArray *params, void *ctx)
         return;
     }
 
-    g_assert(gdbserver_state.mem_buf->len == 0);
+    g_assert(gdbserver_state->mem_buf->len == 0);
     len = len / 2;
-    gdb_hextomem(gdbserver_state.mem_buf, gdb_get_cmd_param(params, 0)->data, len);
-    g_byte_array_append(gdbserver_state.mem_buf, &zero, 1);
+    gdb_hextomem(gdbserver_state->mem_buf, gdb_get_cmd_param(params, 0)->data, len);
+    g_byte_array_append(gdbserver_state->mem_buf, &zero, 1);
     qemu_chr_be_write(gdbserver_system_state.mon_chr,
-                      gdbserver_state.mem_buf->data,
-                      gdbserver_state.mem_buf->len);
+                      gdbserver_state->mem_buf->data,
+                      gdbserver_state->mem_buf->len);
     gdb_put_packet("OK");
 }
 
@@ -582,7 +582,7 @@ int gdb_continue_partial(char *newstates)
                 break; /* nothing to do here */
             case 's':
                 trace_gdbstub_op_stepping(cpu->cpu_index);
-                cpu_single_step(cpu, gdbserver_state.sstep_flags);
+                cpu_single_step(cpu, gdbserver_state->sstep_flags);
                 cpu_resume(cpu);
                 flag = 1;
                 break;
