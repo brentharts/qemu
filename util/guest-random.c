@@ -16,8 +16,11 @@
 #include "crypto/random.h"
 #include "exec/replay-core.h"
 
-
+#ifdef NO_THREAD_LOCAL
+static GRand *thread_rand;
+#else
 static __thread GRand *thread_rand;
+#endif
 static bool deterministic;
 
 
