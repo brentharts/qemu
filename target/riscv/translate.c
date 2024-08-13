@@ -30,11 +30,11 @@
 
 #include "internals.h"
 
-#ifndef SHARED_LIB
+//#ifndef SHARED_LIB
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
 #undef  HELPER_H
-#endif
+//#endif
 
 #include "tcg/tcg-cpu.h"
 
