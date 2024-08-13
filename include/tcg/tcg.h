@@ -579,7 +579,11 @@ extern bool tcg_use_softmmu;
 #define tcg_use_softmmu  true
 #endif
 
+#ifdef NO_THREAD_LOCAL
+extern TCGContext *tcg_ctx;
+#else
 extern __thread TCGContext *tcg_ctx;
+#endif
 extern const void *tcg_code_gen_epilogue;
 extern uintptr_t tcg_splitwx_diff;
 extern TCGv_env tcg_env;
