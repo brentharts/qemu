@@ -708,7 +708,11 @@ void *qemu_alloc_stack(size_t *sz)
 }
 
 #ifdef CONFIG_DEBUG_STACK_USAGE
-static __thread unsigned int max_stack_usage;
+    #ifdef NO_THREAD_LOCAL
+    static unsigned int max_stack_usage;
+    #else
+    static __thread unsigned int max_stack_usage;
+    #endif
 #endif
 
 void qemu_free_stack(void *stack, size_t sz)
