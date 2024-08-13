@@ -217,8 +217,8 @@ void gdb_handle_query_offsets(GArray *params, void *user_ctx)
 {
     TaskState *ts;
 
-    ts = get_task_state(gdbserver_state.c_cpu);
-    g_string_printf(gdbserver_state.str_buf,
+    ts = get_task_state(gdbserver_state->c_cpu);
+    g_string_printf(gdbserver_state->str_buf,
                     "Text=" TARGET_ABI_FMT_lx
                     ";Data=" TARGET_ABI_FMT_lx
                     ";Bss=" TARGET_ABI_FMT_lx,
@@ -253,7 +253,7 @@ void gdb_handle_query_xfer_auxv(GArray *params, void *user_ctx)
 
     offset = gdb_get_cmd_param(params, 0)->val_ul;
     len = gdb_get_cmd_param(params, 1)->val_ul;
-    ts = get_task_state(gdbserver_state.c_cpu);
+    ts = get_task_state(gdbserver_state->c_cpu);
     saved_auxv = ts->info->saved_auxv;
     auxv_len = ts->info->auxv_len;
 
@@ -267,41 +267,41 @@ void gdb_handle_query_xfer_auxv(GArray *params, void *user_ctx)
     }
 
     if (len < auxv_len - offset) {
-        g_string_assign(gdbserver_state.str_buf, "m");
+        g_string_assign(gdbserver_state->str_buf, "m");
     } else {
-        g_string_assign(gdbserver_state.str_buf, "l");
+        g_string_assign(gdbserver_state->str_buf, "l");
         len = auxv_len - offset;
     }
 
-    g_byte_array_set_size(gdbserver_state.mem_buf, len);
-    if (target_memory_rw_debug(gdbserver_state.g_cpu, saved_auxv + offset,
-                               gdbserver_state.mem_buf->data, len, false)) {
+    g_byte_array_set_size(gdbserver_state->mem_buf, len);
+    if (target_memory_rw_debug(gdbserver_state->g_cpu, saved_auxv + offset,
+                               gdbserver_state->mem_buf->data, len, false)) {
         gdb_put_packet("E14");
         return;
     }
 
-    gdb_memtox(gdbserver_state.str_buf,
-           (const char *)gdbserver_state.mem_buf->data, len);
-    gdb_put_packet_binary(gdbserver_state.str_buf->str,
-                      gdbserver_state.str_buf->len, true);
+    gdb_memtox(gdbserver_state->str_buf,
+           (const char *)gdbserver_state->mem_buf->data, len);
+    gdb_put_packet_binary(gdbserver_state->str_buf->str,
+                      gdbserver_state->str_buf->len, true);
 }
 #endif
 
 static const char *get_filename_param(GArray *params, int i)
 {
     const char *hex_filename = gdb_get_cmd_param(params, i)->data;
-    gdb_hextomem(gdbserver_state.mem_buf, hex_filename,
+    gdb_hextomem(gdbserver_state->mem_buf, hex_filename,
                  strlen(hex_filename) / 2);
-    g_byte_array_append(gdbserver_state.mem_buf, (const guint8 *)"", 1);
-    return (const char *)gdbserver_state.mem_buf->data;
+    g_byte_array_append(gdbserver_state->mem_buf, (const guint8 *)"", 1);
+    return (const char *)gdbserver_state->mem_buf->data;
 }
 
 static void hostio_reply_with_data(const void *buf, size_t n)
 {
-    g_string_printf(gdbserver_state.str_buf, "F%zx;", n);
-    gdb_memtox(gdbserver_state.str_buf, buf, n);
-    gdb_put_packet_binary(gdbserver_state.str_buf->str,
-                          gdbserver_state.str_buf->len, true);
+    g_string_printf(gdbserver_state->str_buf, "F%zx;", n);
+    gdb_memtox(gdbserver_state->str_buf, buf, n);
+    gdb_put_packet_binary(gdbserver_state->str_buf->str,
+                          gdbserver_state->str_buf->len, true);
 }
 
 void gdb_handle_v_file_open(GArray *params, void *user_ctx)
@@ -311,15 +311,15 @@ void gdb_handle_v_file_open(GArray *params, void *user_ctx)
     uint64_t mode = gdb_get_cmd_param(params, 2)->val_ull;
 
 #ifdef CONFIG_LINUX
-    int fd = do_guest_openat(cpu_env(gdbserver_state.g_cpu), 0, filename,
+    int fd = do_guest_openat(cpu_env(gdbserver_state->g_cpu), 0, filename,
                              flags, mode, false);
 #else
     int fd = open(filename, flags, mode);
 #endif
     if (fd < 0) {
-        g_string_printf(gdbserver_state.str_buf, "F-1,%d", errno);
+        g_string_printf(gdbserver_state->str_buf, "F-1,%d", errno);
     } else {
-        g_string_printf(gdbserver_state.str_buf, "F%d", fd);
+        g_string_printf(gdbserver_state->str_buf, "F%d", fd);
     }
     gdb_put_strbuf();
 }
@@ -329,7 +329,7 @@ void gdb_handle_v_file_close(GArray *params, void *user_ctx)
     int fd = gdb_get_cmd_param(params, 0)->val_ul;
 
     if (close(fd) == -1) {
-        g_string_printf(gdbserver_state.str_buf, "F-1,%d", errno);
+        g_string_printf(gdbserver_state->str_buf, "F-1,%d", errno);
         gdb_put_strbuf();
         return;
     }
@@ -352,7 +352,7 @@ void gdb_handle_v_file_pread(GArray *params, void *user_ctx)
 
     ssize_t n = pread(fd, buf, bufsiz, offset);
     if (n < 0) {
-        g_string_printf(gdbserver_state.str_buf, "F-1,%d", errno);
+        g_string_printf(gdbserver_state->str_buf, "F-1,%d", errno);
         gdb_put_strbuf();
         return;
     }
@@ -375,7 +375,7 @@ void gdb_handle_v_file_readlink(GArray *params, void *user_ctx)
     ssize_t n = readlink(filename, buf, BUFSIZ);
 #endif
     if (n < 0) {
-        g_string_printf(gdbserver_state.str_buf, "F-1,%d", errno);
+        g_string_printf(gdbserver_state->str_buf, "F-1,%d", errno);
         gdb_put_strbuf();
         return;
     }
@@ -415,7 +415,7 @@ void gdb_handle_query_xfer_exec_file(GArray *params, void *user_ctx)
         length = total_length - offset;
     }
 
-    g_string_printf(gdbserver_state.str_buf, "l%.*s", length,
+    g_string_printf(gdbserver_state->str_buf, "l%.*s", length,
                     ts->bprm->filename + offset);
     gdb_put_strbuf();
 }
