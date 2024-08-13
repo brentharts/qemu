@@ -55,25 +55,21 @@ typedef struct GDBRegisterState {
     const GDBFeature *feature;
 } GDBRegisterState;
 
-GDBState gdbserver_state;
+GDBState *gdbserver_state = NULL;
 
-void gdb_init_gdbserver_state(void)
-{
-    g_assert(!gdbserver_state.init);
-    memset(&gdbserver_state, 0, sizeof(GDBState));
-    gdbserver_state.init = true;
-    gdbserver_state.str_buf = g_string_new(NULL);
-    gdbserver_state.mem_buf = g_byte_array_sized_new(MAX_PACKET_LENGTH);
-    gdbserver_state.last_packet = g_byte_array_sized_new(MAX_PACKET_LENGTH + 4);
-
+void gdb_init_gdbserver_state(void){
+    gdbserver_state = g_malloc0(sizeof(GDBState));
+    gdbserver_state->str_buf = g_string_new(NULL);
+    gdbserver_state->mem_buf = g_byte_array_sized_new(MAX_PACKET_LENGTH);
+    gdbserver_state->last_packet = g_byte_array_sized_new(MAX_PACKET_LENGTH + 4);
     /*
      * What single-step modes are supported is accelerator dependent.
      * By default try to use no IRQs and no timers while single
      * stepping so as to make single stepping like a typical ICE HW step.
      */
-    gdbserver_state.supported_sstep_flags = accel_supported_gdbstub_sstep_flags();
-    gdbserver_state.sstep_flags = SSTEP_ENABLE | SSTEP_NOIRQ | SSTEP_NOTIMER;
-    gdbserver_state.sstep_flags &= gdbserver_state.supported_sstep_flags;
+    gdbserver_state->supported_sstep_flags = accel_supported_gdbstub_sstep_flags();
+    gdbserver_state->sstep_flags = SSTEP_ENABLE | SSTEP_NOIRQ | SSTEP_NOTIMER;
+    gdbserver_state->sstep_flags &= gdbserver_state->supported_sstep_flags;
 }
 
 /* writes 2*len+1 bytes in buf */
@@ -143,10 +139,10 @@ int gdb_put_packet_binary(const char *buf, int len, bool dump)
     }
 
     for(;;) {
-        g_byte_array_set_size(gdbserver_state.last_packet, 0);
-        g_byte_array_append(gdbserver_state.last_packet,
+        g_byte_array_set_size(gdbserver_state->last_packet, 0);
+        g_byte_array_append(gdbserver_state->last_packet,
                             (const uint8_t *) "$", 1);
-        g_byte_array_append(gdbserver_state.last_packet,
+        g_byte_array_append(gdbserver_state->last_packet,
                             (const uint8_t *) buf, len);
         csum = 0;
         for(i = 0; i < len; i++) {
@@ -155,10 +151,10 @@ int gdb_put_packet_binary(const char *buf, int len, bool dump)
         footer[0] = '#';
         footer[1] = tohex((csum >> 4) & 0xf);
         footer[2] = tohex((csum) & 0xf);
-        g_byte_array_append(gdbserver_state.last_packet, footer, 3);
+        g_byte_array_append(gdbserver_state->last_packet, footer, 3);
 
-        gdb_put_buffer(gdbserver_state.last_packet->data,
-                   gdbserver_state.last_packet->len);
+        gdb_put_buffer(gdbserver_state->last_packet->data,
+                   gdbserver_state->last_packet->len);
 
         if (gdb_got_immediate_ack()) {
             break;
@@ -177,7 +173,7 @@ int gdb_put_packet(const char *buf)
 
 void gdb_put_strbuf(void)
 {
-    gdb_put_packet(gdbserver_state.str_buf->str);
+    gdb_put_packet(gdbserver_state->str_buf->str);
 }
 
 /* Encode data using the encoding for 'x' packets.  */
@@ -206,8 +202,8 @@ static uint32_t gdb_get_cpu_pid(CPUState *cpu)
 #else
     if (cpu->cluster_index == UNASSIGNED_CLUSTER_INDEX) {
         /* Return the default process' PID */
-        int index = gdbserver_state.process_num - 1;
-        return gdbserver_state.processes[index].pid;
+        int index = gdbserver_state->process_num - 1;
+        return gdbserver_state->processes[index].pid;
     }
     return cpu->cluster_index + 1;
 #endif
@@ -219,12 +215,12 @@ GDBProcess *gdb_get_process(uint32_t pid)
 
     if (!pid) {
         /* 0 means any process, we take the first one */
-        return &gdbserver_state.processes[0];
+        return &gdbserver_state->processes[0];
     }
 
-    for (i = 0; i < gdbserver_state.process_num; i++) {
-        if (gdbserver_state.processes[i].pid == pid) {
-            return &gdbserver_state.processes[i];
+    for (i = 0; i < gdbserver_state->process_num; i++) {
+        if (gdbserver_state->processes[i].pid == pid) {
+            return &gdbserver_state->processes[i];
         }
     }
 
@@ -644,7 +640,7 @@ static void gdb_process_breakpoint_remove_all(GDBProcess *p)
 
 static void gdb_set_cpu_pc(vaddr pc)
 {
-    CPUState *cpu = gdbserver_state.c_cpu;
+    CPUState *cpu = gdbserver_state->c_cpu;
 
     cpu_synchronize_state(cpu);
     cpu_set_pc(cpu, pc);
@@ -652,7 +648,7 @@ static void gdb_set_cpu_pc(vaddr pc)
 
 void gdb_append_thread_id(CPUState *cpu, GString *buf)
 {
-    if (gdbserver_state.multiprocess) {
+    if (gdbserver_state->multiprocess) {
         g_string_append_printf(buf, "p%02x.%02x",
                                gdb_get_cpu_pid(cpu), gdb_get_cpu_index(cpu));
     } else {
@@ -842,10 +838,10 @@ static int gdb_handle_vcont(const char *p)
      * the ones we resumed/single stepped here.
      */
     if (target_count > 0) {
-        gdbserver_state.c_cpu = last_target;
+        gdbserver_state->c_cpu = last_target;
     }
 
-    gdbserver_state.signal = signal;
+    gdbserver_state->signal = signal;
     gdb_continue_partial(newstates);
     return res;
 }
@@ -967,10 +963,10 @@ static bool process_string_cmd(const char *data,
         }
 
         if (cmd->need_cpu_context) {
-            user_ctx = (void *)gdbserver_state.g_cpu;
+            user_ctx = (void *)gdbserver_state->g_cpu;
         }
 
-        gdbserver_state.allow_stop_reply = cmd->allow_stop_reply;
+        gdbserver_state->allow_stop_reply = cmd->allow_stop_reply;
         cmd->handler(params, user_ctx);
         return true;
     }
@@ -984,8 +980,8 @@ static void run_cmd_parser(const char *data, const GdbCmdParseEntry *cmd)
         return;
     }
 
-    g_string_set_size(gdbserver_state.str_buf, 0);
-    g_byte_array_set_size(gdbserver_state.mem_buf, 0);
+    g_string_set_size(gdbserver_state->str_buf, 0);
+    g_byte_array_set_size(gdbserver_state->mem_buf, 0);
 
     /* In case there was an error during the command parsing we must
     * send a NULL packet to indicate the command is not supported */
@@ -999,7 +995,7 @@ static void handle_detach(GArray *params, void *user_ctx)
     GDBProcess *process;
     uint32_t pid = 1;
 
-    if (gdbserver_state.multiprocess) {
+    if (gdbserver_state->multiprocess) {
         if (!params->len) {
             gdb_put_packet("E22");
             return;
@@ -1018,15 +1014,15 @@ static void handle_detach(GArray *params, void *user_ctx)
     gdb_process_breakpoint_remove_all(process);
     process->attached = false;
 
-    if (pid == gdb_get_cpu_pid(gdbserver_state.c_cpu)) {
-        gdbserver_state.c_cpu = gdb_first_attached_cpu();
+    if (pid == gdb_get_cpu_pid(gdbserver_state->c_cpu)) {
+        gdbserver_state->c_cpu = gdb_first_attached_cpu();
     }
 
-    if (pid == gdb_get_cpu_pid(gdbserver_state.g_cpu)) {
-        gdbserver_state.g_cpu = gdb_first_attached_cpu();
+    if (pid == gdb_get_cpu_pid(gdbserver_state->g_cpu)) {
+        gdbserver_state->g_cpu = gdb_first_attached_cpu();
     }
 
-    if (!gdbserver_state.c_cpu) {
+    if (!gdbserver_state->c_cpu) {
         /* No more process attached */
         gdb_disable_syscalls();
         gdb_continue();
@@ -1064,7 +1060,7 @@ static void handle_continue(GArray *params, void *user_ctx)
         gdb_set_cpu_pc(gdb_get_cmd_param(params, 0)->val_ull);
     }
 
-    gdbserver_state.signal = 0;
+    gdbserver_state->signal = 0;
     gdb_continue();
 }
 
@@ -1080,9 +1076,9 @@ static void handle_cont_with_sig(GArray *params, void *user_ctx)
         signal = gdb_get_cmd_param(params, 0)->val_ul;
     }
 
-    gdbserver_state.signal = gdb_signal_to_target(signal);
-    if (gdbserver_state.signal == -1) {
-        gdbserver_state.signal = 0;
+    gdbserver_state->signal = gdb_signal_to_target(signal);
+    if (gdbserver_state->signal == -1) {
+        gdbserver_state->signal = 0;
     }
     gdb_continue();
 }
@@ -1126,11 +1122,11 @@ static void handle_set_thread(GArray *params, void *user_ctx)
      */
     switch (gdb_get_cmd_param(params, 0)->opcode) {
     case 'c':
-        gdbserver_state.c_cpu = cpu;
+        gdbserver_state->c_cpu = cpu;
         gdb_put_packet("OK");
         break;
     case 'g':
-        gdbserver_state.g_cpu = cpu;
+        gdbserver_state->g_cpu = cpu;
         gdb_put_packet("OK");
         break;
     default:
@@ -1148,7 +1144,7 @@ static void handle_insert_bp(GArray *params, void *user_ctx)
         return;
     }
 
-    res = gdb_breakpoint_insert(gdbserver_state.c_cpu,
+    res = gdb_breakpoint_insert(gdbserver_state->c_cpu,
                                 gdb_get_cmd_param(params, 0)->val_ul,
                                 gdb_get_cmd_param(params, 1)->val_ull,
                                 gdb_get_cmd_param(params, 2)->val_ull);
@@ -1172,7 +1168,7 @@ static void handle_remove_bp(GArray *params, void *user_ctx)
         return;
     }
 
-    res = gdb_breakpoint_remove(gdbserver_state.c_cpu,
+    res = gdb_breakpoint_remove(gdbserver_state->c_cpu,
                                 gdb_get_cmd_param(params, 0)->val_ul,
                                 gdb_get_cmd_param(params, 1)->val_ull,
                                 gdb_get_cmd_param(params, 2)->val_ull);
@@ -1208,8 +1204,8 @@ static void handle_set_reg(GArray *params, void *user_ctx)
     }
 
     reg_size = strlen(gdb_get_cmd_param(params, 1)->data) / 2;
-    gdb_hextomem(gdbserver_state.mem_buf, gdb_get_cmd_param(params, 1)->data, reg_size);
-    gdb_write_register(gdbserver_state.g_cpu, gdbserver_state.mem_buf->data,
+    gdb_hextomem(gdbserver_state->mem_buf, gdb_get_cmd_param(params, 1)->data, reg_size);
+    gdb_write_register(gdbserver_state->g_cpu, gdbserver_state->mem_buf->data,
                        gdb_get_cmd_param(params, 0)->val_ull);
     gdb_put_packet("OK");
 }
@@ -1223,18 +1219,18 @@ static void handle_get_reg(GArray *params, void *user_ctx)
         return;
     }
 
-    reg_size = gdb_read_register(gdbserver_state.g_cpu,
-                                 gdbserver_state.mem_buf,
+    reg_size = gdb_read_register(gdbserver_state->g_cpu,
+                                 gdbserver_state->mem_buf,
                                  gdb_get_cmd_param(params, 0)->val_ull);
     if (!reg_size) {
         gdb_put_packet("E14");
         return;
     } else {
-        g_byte_array_set_size(gdbserver_state.mem_buf, reg_size);
+        g_byte_array_set_size(gdbserver_state->mem_buf, reg_size);
     }
 
-    gdb_memtohex(gdbserver_state.str_buf,
-                 gdbserver_state.mem_buf->data, reg_size);
+    gdb_memtohex(gdbserver_state->str_buf,
+                 gdbserver_state->mem_buf->data, reg_size);
     gdb_put_strbuf();
 }
 
@@ -1252,12 +1248,12 @@ static void handle_write_mem(GArray *params, void *user_ctx)
         return;
     }
 
-    gdb_hextomem(gdbserver_state.mem_buf, gdb_get_cmd_param(params, 2)->data,
+    gdb_hextomem(gdbserver_state->mem_buf, gdb_get_cmd_param(params, 2)->data,
                  gdb_get_cmd_param(params, 1)->val_ull);
-    if (gdb_target_memory_rw_debug(gdbserver_state.g_cpu,
+    if (gdb_target_memory_rw_debug(gdbserver_state->g_cpu,
                                    gdb_get_cmd_param(params, 0)->val_ull,
-                                   gdbserver_state.mem_buf->data,
-                                   gdbserver_state.mem_buf->len, true)) {
+                                   gdbserver_state->mem_buf->data,
+                                   gdbserver_state->mem_buf->len, true)) {
         gdb_put_packet("E14");
         return;
     }
@@ -1278,19 +1274,19 @@ static void handle_read_mem(GArray *params, void *user_ctx)
         return;
     }
 
-    g_byte_array_set_size(gdbserver_state.mem_buf,
+    g_byte_array_set_size(gdbserver_state->mem_buf,
                           gdb_get_cmd_param(params, 1)->val_ull);
 
-    if (gdb_target_memory_rw_debug(gdbserver_state.g_cpu,
+    if (gdb_target_memory_rw_debug(gdbserver_state->g_cpu,
                                    gdb_get_cmd_param(params, 0)->val_ull,
-                                   gdbserver_state.mem_buf->data,
-                                   gdbserver_state.mem_buf->len, false)) {
+                                   gdbserver_state->mem_buf->data,
+                                   gdbserver_state->mem_buf->len, false)) {
         gdb_put_packet("E14");
         return;
     }
 
-    gdb_memtohex(gdbserver_state.str_buf, gdbserver_state.mem_buf->data,
-             gdbserver_state.mem_buf->len);
+    gdb_memtohex(gdbserver_state->str_buf, gdbserver_state->mem_buf->data,
+             gdbserver_state->mem_buf->len);
     gdb_put_strbuf();
 }
 
@@ -1305,14 +1301,14 @@ static void handle_write_all_regs(GArray *params, void *user_ctx)
         return;
     }
 
-    cpu_synchronize_state(gdbserver_state.g_cpu);
+    cpu_synchronize_state(gdbserver_state->g_cpu);
     len = strlen(gdb_get_cmd_param(params, 0)->data) / 2;
-    gdb_hextomem(gdbserver_state.mem_buf, gdb_get_cmd_param(params, 0)->data, len);
-    registers = gdbserver_state.mem_buf->data;
+    gdb_hextomem(gdbserver_state->mem_buf, gdb_get_cmd_param(params, 0)->data, len);
+    registers = gdbserver_state->mem_buf->data;
     for (reg_id = 0;
-         reg_id < gdbserver_state.g_cpu->gdb_num_g_regs && len > 0;
+         reg_id < gdbserver_state->g_cpu->gdb_num_g_regs && len > 0;
          reg_id++) {
-        reg_size = gdb_write_register(gdbserver_state.g_cpu, registers, reg_id);
+        reg_size = gdb_write_register(gdbserver_state->g_cpu, registers, reg_id);
         len -= reg_size;
         registers += reg_size;
     }
@@ -1324,17 +1320,17 @@ static void handle_read_all_regs(GArray *params, void *user_ctx)
     int reg_id;
     size_t len;
 
-    cpu_synchronize_state(gdbserver_state.g_cpu);
-    g_byte_array_set_size(gdbserver_state.mem_buf, 0);
+    cpu_synchronize_state(gdbserver_state->g_cpu);
+    g_byte_array_set_size(gdbserver_state->mem_buf, 0);
     len = 0;
-    for (reg_id = 0; reg_id < gdbserver_state.g_cpu->gdb_num_g_regs; reg_id++) {
-        len += gdb_read_register(gdbserver_state.g_cpu,
-                                 gdbserver_state.mem_buf,
+    for (reg_id = 0; reg_id < gdbserver_state->g_cpu->gdb_num_g_regs; reg_id++) {
+        len += gdb_read_register(gdbserver_state->g_cpu,
+                                 gdbserver_state->mem_buf,
                                  reg_id);
     }
-    g_assert(len == gdbserver_state.mem_buf->len);
+    g_assert(len == gdbserver_state->mem_buf->len);
 
-    gdb_memtohex(gdbserver_state.str_buf, gdbserver_state.mem_buf->data, len);
+    gdb_memtohex(gdbserver_state->str_buf, gdbserver_state->mem_buf->data, len);
     gdb_put_strbuf();
 }
 
@@ -1345,7 +1341,7 @@ static void handle_step(GArray *params, void *user_ctx)
         gdb_set_cpu_pc(gdb_get_cmd_param(params, 0)->val_ull);
     }
 
-    cpu_single_step(gdbserver_state.c_cpu, gdbserver_state.sstep_flags);
+    cpu_single_step(gdbserver_state->c_cpu, gdbserver_state->sstep_flags);
     gdb_continue();
 }
 
@@ -1403,7 +1399,7 @@ static void handle_v_attach(GArray *params, void *user_ctx)
     GDBProcess *process;
     CPUState *cpu;
 
-    g_string_assign(gdbserver_state.str_buf, "E22");
+    g_string_assign(gdbserver_state->str_buf, "E22");
     if (!params->len) {
         goto cleanup;
     }
@@ -1419,14 +1415,14 @@ static void handle_v_attach(GArray *params, void *user_ctx)
     }
 
     process->attached = true;
-    gdbserver_state.g_cpu = cpu;
-    gdbserver_state.c_cpu = cpu;
+    gdbserver_state->g_cpu = cpu;
+    gdbserver_state->c_cpu = cpu;
 
-    if (gdbserver_state.allow_stop_reply) {
-        g_string_printf(gdbserver_state.str_buf, "T%02xthread:", GDB_SIGNAL_TRAP);
-        gdb_append_thread_id(cpu, gdbserver_state.str_buf);
-        g_string_append_c(gdbserver_state.str_buf, ';');
-        gdbserver_state.allow_stop_reply = false;
+    if (gdbserver_state->allow_stop_reply) {
+        g_string_printf(gdbserver_state->str_buf, "T%02xthread:", GDB_SIGNAL_TRAP);
+        gdb_append_thread_id(cpu, gdbserver_state->str_buf);
+        g_string_append_c(gdbserver_state->str_buf, ';');
+        gdbserver_state->allow_stop_reply = false;
 cleanup:
         gdb_put_strbuf();
     }
@@ -1514,15 +1510,15 @@ static void handle_v_commands(GArray *params, void *user_ctx)
 
 static void handle_query_qemu_sstepbits(GArray *params, void *user_ctx)
 {
-    g_string_printf(gdbserver_state.str_buf, "ENABLE=%x", SSTEP_ENABLE);
+    g_string_printf(gdbserver_state->str_buf, "ENABLE=%x", SSTEP_ENABLE);
 
-    if (gdbserver_state.supported_sstep_flags & SSTEP_NOIRQ) {
-        g_string_append_printf(gdbserver_state.str_buf, ",NOIRQ=%x",
+    if (gdbserver_state->supported_sstep_flags & SSTEP_NOIRQ) {
+        g_string_append_printf(gdbserver_state->str_buf, ",NOIRQ=%x",
                                SSTEP_NOIRQ);
     }
 
-    if (gdbserver_state.supported_sstep_flags & SSTEP_NOTIMER) {
-        g_string_append_printf(gdbserver_state.str_buf, ",NOTIMER=%x",
+    if (gdbserver_state->supported_sstep_flags & SSTEP_NOTIMER) {
+        g_string_append_printf(gdbserver_state->str_buf, ",NOTIMER=%x",
                                SSTEP_NOTIMER);
     }
 
@@ -1539,19 +1535,19 @@ static void handle_set_qemu_sstep(GArray *params, void *user_ctx)
 
     new_sstep_flags = gdb_get_cmd_param(params, 0)->val_ul;
 
-    if (new_sstep_flags  & ~gdbserver_state.supported_sstep_flags) {
+    if (new_sstep_flags  & ~gdbserver_state->supported_sstep_flags) {
         gdb_put_packet("E22");
         return;
     }
 
-    gdbserver_state.sstep_flags = new_sstep_flags;
+    gdbserver_state->sstep_flags = new_sstep_flags;
     gdb_put_packet("OK");
 }
 
 static void handle_query_qemu_sstep(GArray *params, void *user_ctx)
 {
-    g_string_printf(gdbserver_state.str_buf, "0x%x",
-                    gdbserver_state.sstep_flags);
+    g_string_printf(gdbserver_state->str_buf, "0x%x",
+                    gdbserver_state->sstep_flags);
     gdb_put_strbuf();
 }
 
@@ -1565,29 +1561,29 @@ static void handle_query_curr_tid(GArray *params, void *user_ctx)
      * the first thread of the current process (gdb returns the
      * first thread).
      */
-    process = gdb_get_cpu_process(gdbserver_state.g_cpu);
+    process = gdb_get_cpu_process(gdbserver_state->g_cpu);
     cpu = gdb_get_first_cpu_in_process(process);
-    g_string_assign(gdbserver_state.str_buf, "QC");
-    gdb_append_thread_id(cpu, gdbserver_state.str_buf);
+    g_string_assign(gdbserver_state->str_buf, "QC");
+    gdb_append_thread_id(cpu, gdbserver_state->str_buf);
     gdb_put_strbuf();
 }
 
 static void handle_query_threads(GArray *params, void *user_ctx)
 {
-    if (!gdbserver_state.query_cpu) {
+    if (!gdbserver_state->query_cpu) {
         gdb_put_packet("l");
         return;
     }
 
-    g_string_assign(gdbserver_state.str_buf, "m");
-    gdb_append_thread_id(gdbserver_state.query_cpu, gdbserver_state.str_buf);
+    g_string_assign(gdbserver_state->str_buf, "m");
+    gdb_append_thread_id(gdbserver_state->query_cpu, gdbserver_state->str_buf);
     gdb_put_strbuf();
-    gdbserver_state.query_cpu = gdb_next_attached_cpu(gdbserver_state.query_cpu);
+    gdbserver_state->query_cpu = gdb_next_attached_cpu(gdbserver_state->query_cpu);
 }
 
 static void handle_query_first_threads(GArray *params, void *user_ctx)
 {
-    gdbserver_state.query_cpu = gdb_first_attached_cpu();
+    gdbserver_state->query_cpu = gdb_first_attached_cpu();
     handle_query_threads(params, user_ctx);
 }
 
@@ -1610,7 +1606,7 @@ static void handle_query_thread_extra(GArray *params, void *user_ctx)
 
     cpu_synchronize_state(cpu);
 
-    if (gdbserver_state.multiprocess && (gdbserver_state.process_num > 1)) {
+    if (gdbserver_state->multiprocess && (gdbserver_state->process_num > 1)) {
         /* Print the CPU model and name in multiprocess mode */
         ObjectClass *oc = object_get_class(OBJECT(cpu));
         const char *cpu_model = object_class_get_name(oc);
@@ -1623,7 +1619,7 @@ static void handle_query_thread_extra(GArray *params, void *user_ctx)
                         cpu->halted ? "halted " : "running");
     }
     trace_gdbstub_op_extra_info(rs->str);
-    gdb_memtohex(gdbserver_state.str_buf, (uint8_t *)rs->str, rs->len);
+    gdb_memtohex(gdbserver_state->str_buf, (uint8_t *)rs->str, rs->len);
     gdb_put_strbuf();
 }
 
@@ -1648,46 +1644,46 @@ static void handle_query_supported(GArray *params, void *user_ctx)
 {
     CPUClass *cc;
 
-    g_string_printf(gdbserver_state.str_buf, "PacketSize=%x", MAX_PACKET_LENGTH);
+    g_string_printf(gdbserver_state->str_buf, "PacketSize=%x", MAX_PACKET_LENGTH);
     cc = CPU_GET_CLASS(first_cpu);
     if (cc->gdb_core_xml_file) {
-        g_string_append(gdbserver_state.str_buf, ";qXfer:features:read+");
+        g_string_append(gdbserver_state->str_buf, ";qXfer:features:read+");
     }
 
     if (gdb_can_reverse()) {
-        g_string_append(gdbserver_state.str_buf,
+        g_string_append(gdbserver_state->str_buf,
             ";ReverseStep+;ReverseContinue+");
     }
 
 #if defined(CONFIG_USER_ONLY)
 #if defined(CONFIG_LINUX)
-    if (get_task_state(gdbserver_state.c_cpu)) {
-        g_string_append(gdbserver_state.str_buf, ";qXfer:auxv:read+");
+    if (get_task_state(gdbserver_state->c_cpu)) {
+        g_string_append(gdbserver_state->str_buf, ";qXfer:auxv:read+");
     }
-    g_string_append(gdbserver_state.str_buf, ";QCatchSyscalls+");
+    g_string_append(gdbserver_state->str_buf, ";QCatchSyscalls+");
 
-    g_string_append(gdbserver_state.str_buf, ";qXfer:siginfo:read+");
+    g_string_append(gdbserver_state->str_buf, ";qXfer:siginfo:read+");
 #endif
-    g_string_append(gdbserver_state.str_buf, ";qXfer:exec-file:read+");
+    g_string_append(gdbserver_state->str_buf, ";qXfer:exec-file:read+");
 #endif
 
     if (params->len) {
         const char *gdb_supported = gdb_get_cmd_param(params, 0)->data;
 
         if (strstr(gdb_supported, "multiprocess+")) {
-            gdbserver_state.multiprocess = true;
+            gdbserver_state->multiprocess = true;
         }
 #if defined(CONFIG_USER_ONLY)
         gdb_handle_query_supported_user(gdb_supported);
 #endif
     }
 
-    g_string_append(gdbserver_state.str_buf, ";vContSupported+;multiprocess+");
+    g_string_append(gdbserver_state->str_buf, ";vContSupported+;multiprocess+");
 
     if (extra_query_flags) {
         int extras = g_strv_length(extra_query_flags);
         for (int i = 0; i < extras; i++) {
-            g_string_append(gdbserver_state.str_buf, extra_query_flags[i]);
+            g_string_append(gdbserver_state->str_buf, extra_query_flags[i]);
         }
     }
 
@@ -1707,8 +1703,8 @@ static void handle_query_xfer_features(GArray *params, void *user_ctx)
         return;
     }
 
-    process = gdb_get_cpu_process(gdbserver_state.g_cpu);
-    cc = CPU_GET_CLASS(gdbserver_state.g_cpu);
+    process = gdb_get_cpu_process(gdbserver_state->g_cpu);
+    cc = CPU_GET_CLASS(gdbserver_state->g_cpu);
     if (!cc->gdb_core_xml_file) {
         gdb_put_packet("");
         return;
@@ -1734,22 +1730,22 @@ static void handle_query_xfer_features(GArray *params, void *user_ctx)
     }
 
     if (len < total_len - addr) {
-        g_string_assign(gdbserver_state.str_buf, "m");
-        gdb_memtox(gdbserver_state.str_buf, xml + addr, len);
+        g_string_assign(gdbserver_state->str_buf, "m");
+        gdb_memtox(gdbserver_state->str_buf, xml + addr, len);
     } else {
-        g_string_assign(gdbserver_state.str_buf, "l");
-        gdb_memtox(gdbserver_state.str_buf, xml + addr, total_len - addr);
+        g_string_assign(gdbserver_state->str_buf, "l");
+        gdb_memtox(gdbserver_state->str_buf, xml + addr, total_len - addr);
     }
 
-    gdb_put_packet_binary(gdbserver_state.str_buf->str,
-                      gdbserver_state.str_buf->len, true);
+    gdb_put_packet_binary(gdbserver_state->str_buf->str,
+                      gdbserver_state->str_buf->len, true);
 }
 
 static void handle_query_qemu_supported(GArray *params, void *user_ctx)
 {
-    g_string_printf(gdbserver_state.str_buf, "sstepbits;sstep");
+    g_string_printf(gdbserver_state->str_buf, "sstepbits;sstep");
 #ifndef CONFIG_USER_ONLY
-    g_string_append(gdbserver_state.str_buf, ";PhyMemMode");
+    g_string_append(gdbserver_state->str_buf, ";PhyMemMode");
 #endif
     gdb_put_strbuf();
 }
@@ -2016,19 +2012,19 @@ static void handle_gen_set(GArray *params, void *user_ctx)
 
 static void handle_target_halt(GArray *params, void *user_ctx)
 {
-    if (gdbserver_state.allow_stop_reply) {
-        g_string_printf(gdbserver_state.str_buf, "T%02xthread:", GDB_SIGNAL_TRAP);
-        gdb_append_thread_id(gdbserver_state.c_cpu, gdbserver_state.str_buf);
-        g_string_append_c(gdbserver_state.str_buf, ';');
+    if (gdbserver_state->allow_stop_reply) {
+        g_string_printf(gdbserver_state->str_buf, "T%02xthread:", GDB_SIGNAL_TRAP);
+        gdb_append_thread_id(gdbserver_state->c_cpu, gdbserver_state->str_buf);
+        g_string_append_c(gdbserver_state->str_buf, ';');
         gdb_put_strbuf();
-        gdbserver_state.allow_stop_reply = false;
+        gdbserver_state->allow_stop_reply = false;
     }
     /*
      * Remove all the breakpoints when this query is issued,
      * because gdb is doing an initial connect and the state
      * should be cleaned up.
      */
-    gdb_breakpoint_remove_all(gdbserver_state.c_cpu);
+    gdb_breakpoint_remove_all(gdbserver_state->c_cpu);
 }
 
 static int gdb_handle_packet(const char *line_buf)
@@ -2295,23 +2291,23 @@ void gdb_set_stop_cpu(CPUState *cpu)
         return;
     }
 
-    gdbserver_state.c_cpu = cpu;
-    gdbserver_state.g_cpu = cpu;
+    gdbserver_state->c_cpu = cpu;
+    gdbserver_state->g_cpu = cpu;
 }
 
 void gdb_read_byte(uint8_t ch)
 {
     uint8_t reply;
 
-    gdbserver_state.allow_stop_reply = false;
+    gdbserver_state->allow_stop_reply = false;
 #ifndef CONFIG_USER_ONLY
-    if (gdbserver_state.last_packet->len) {
+    if (gdbserver_state->last_packet->len) {
         /* Waiting for a response to the last packet.  If we see the start
            of a new command then abandon the previous response.  */
         if (ch == '-') {
             trace_gdbstub_err_got_nack();
-            gdb_put_buffer(gdbserver_state.last_packet->data,
-                       gdbserver_state.last_packet->len);
+            gdb_put_buffer(gdbserver_state->last_packet->data,
+                       gdbserver_state->last_packet->len);
         } else if (ch == '+') {
             trace_gdbstub_io_got_ack();
         } else {
@@ -2319,7 +2315,7 @@ void gdb_read_byte(uint8_t ch)
         }
 
         if (ch == '+' || ch == '$') {
-            g_byte_array_set_size(gdbserver_state.last_packet, 0);
+            g_byte_array_set_size(gdbserver_state->last_packet, 0);
         }
         if (ch != '$')
             return;
@@ -2335,19 +2331,19 @@ void gdb_read_byte(uint8_t ch)
         if (ch != 0x03) {
             trace_gdbstub_err_unexpected_runpkt(ch);
         } else {
-            gdbserver_state.allow_stop_reply = true;
+            gdbserver_state->allow_stop_reply = true;
         }
         vm_stop(RUN_STATE_PAUSED);
     } else
 #endif
     {
-        switch(gdbserver_state.state) {
+        switch(gdbserver_state->state) {
         case RS_IDLE:
             if (ch == '$') {
                 /* start of command packet */
-                gdbserver_state.line_buf_index = 0;
-                gdbserver_state.line_sum = 0;
-                gdbserver_state.state = RS_GETLINE;
+                gdbserver_state->line_buf_index = 0;
+                gdbserver_state->line_sum = 0;
+                gdbserver_state->state = RS_GETLINE;
             } else if (ch == '+') {
                 /*
                  * do nothing, gdb may preemptively send out ACKs on
@@ -2360,37 +2356,37 @@ void gdb_read_byte(uint8_t ch)
         case RS_GETLINE:
             if (ch == '}') {
                 /* start escape sequence */
-                gdbserver_state.state = RS_GETLINE_ESC;
-                gdbserver_state.line_sum += ch;
+                gdbserver_state->state = RS_GETLINE_ESC;
+                gdbserver_state->line_sum += ch;
             } else if (ch == '*') {
                 /* start run length encoding sequence */
-                gdbserver_state.state = RS_GETLINE_RLE;
-                gdbserver_state.line_sum += ch;
+                gdbserver_state->state = RS_GETLINE_RLE;
+                gdbserver_state->line_sum += ch;
             } else if (ch == '#') {
                 /* end of command, start of checksum*/
-                gdbserver_state.state = RS_CHKSUM1;
-            } else if (gdbserver_state.line_buf_index >= sizeof(gdbserver_state.line_buf) - 1) {
+                gdbserver_state->state = RS_CHKSUM1;
+            } else if (gdbserver_state->line_buf_index >= sizeof(gdbserver_state->line_buf) - 1) {
                 trace_gdbstub_err_overrun();
-                gdbserver_state.state = RS_IDLE;
+                gdbserver_state->state = RS_IDLE;
             } else {
                 /* unescaped command character */
-                gdbserver_state.line_buf[gdbserver_state.line_buf_index++] = ch;
-                gdbserver_state.line_sum += ch;
+                gdbserver_state->line_buf[gdbserver_state->line_buf_index++] = ch;
+                gdbserver_state->line_sum += ch;
             }
             break;
         case RS_GETLINE_ESC:
             if (ch == '#') {
                 /* unexpected end of command in escape sequence */
-                gdbserver_state.state = RS_CHKSUM1;
-            } else if (gdbserver_state.line_buf_index >= sizeof(gdbserver_state.line_buf) - 1) {
+                gdbserver_state->state = RS_CHKSUM1;
+            } else if (gdbserver_state->line_buf_index >= sizeof(gdbserver_state->line_buf) - 1) {
                 /* command buffer overrun */
                 trace_gdbstub_err_overrun();
-                gdbserver_state.state = RS_IDLE;
+                gdbserver_state->state = RS_IDLE;
             } else {
                 /* parse escaped character and leave escape state */
-                gdbserver_state.line_buf[gdbserver_state.line_buf_index++] = ch ^ 0x20;
-                gdbserver_state.line_sum += ch;
-                gdbserver_state.state = RS_GETLINE;
+                gdbserver_state->line_buf[gdbserver_state->line_buf_index++] = ch ^ 0x20;
+                gdbserver_state->line_sum += ch;
+                gdbserver_state->state = RS_GETLINE;
             }
             break;
         case RS_GETLINE_RLE:
@@ -2401,25 +2397,25 @@ void gdb_read_byte(uint8_t ch)
             if (ch < ' ' || ch == '#' || ch == '$' || ch > 126) {
                 /* invalid RLE count encoding */
                 trace_gdbstub_err_invalid_repeat(ch);
-                gdbserver_state.state = RS_GETLINE;
+                gdbserver_state->state = RS_GETLINE;
             } else {
                 /* decode repeat length */
                 int repeat = ch - ' ' + 3;
-                if (gdbserver_state.line_buf_index + repeat >= sizeof(gdbserver_state.line_buf) - 1) {
+                if (gdbserver_state->line_buf_index + repeat >= sizeof(gdbserver_state->line_buf) - 1) {
                     /* that many repeats would overrun the command buffer */
                     trace_gdbstub_err_overrun();
-                    gdbserver_state.state = RS_IDLE;
-                } else if (gdbserver_state.line_buf_index < 1) {
+                    gdbserver_state->state = RS_IDLE;
+                } else if (gdbserver_state->line_buf_index < 1) {
                     /* got a repeat but we have nothing to repeat */
                     trace_gdbstub_err_invalid_rle();
-                    gdbserver_state.state = RS_GETLINE;
+                    gdbserver_state->state = RS_GETLINE;
                 } else {
                     /* repeat the last character */
-                    memset(gdbserver_state.line_buf + gdbserver_state.line_buf_index,
-                           gdbserver_state.line_buf[gdbserver_state.line_buf_index - 1], repeat);
-                    gdbserver_state.line_buf_index += repeat;
-                    gdbserver_state.line_sum += ch;
-                    gdbserver_state.state = RS_GETLINE;
+                    memset(gdbserver_state->line_buf + gdbserver_state->line_buf_index,
+                           gdbserver_state->line_buf[gdbserver_state->line_buf_index - 1], repeat);
+                    gdbserver_state->line_buf_index += repeat;
+                    gdbserver_state->line_sum += ch;
+                    gdbserver_state->state = RS_GETLINE;
                 }
             }
             break;
@@ -2427,33 +2423,33 @@ void gdb_read_byte(uint8_t ch)
             /* get high hex digit of checksum */
             if (!isxdigit(ch)) {
                 trace_gdbstub_err_checksum_invalid(ch);
-                gdbserver_state.state = RS_GETLINE;
+                gdbserver_state->state = RS_GETLINE;
                 break;
             }
-            gdbserver_state.line_buf[gdbserver_state.line_buf_index] = '\0';
-            gdbserver_state.line_csum = fromhex(ch) << 4;
-            gdbserver_state.state = RS_CHKSUM2;
+            gdbserver_state->line_buf[gdbserver_state->line_buf_index] = '\0';
+            gdbserver_state->line_csum = fromhex(ch) << 4;
+            gdbserver_state->state = RS_CHKSUM2;
             break;
         case RS_CHKSUM2:
             /* get low hex digit of checksum */
             if (!isxdigit(ch)) {
                 trace_gdbstub_err_checksum_invalid(ch);
-                gdbserver_state.state = RS_GETLINE;
+                gdbserver_state->state = RS_GETLINE;
                 break;
             }
-            gdbserver_state.line_csum |= fromhex(ch);
+            gdbserver_state->line_csum |= fromhex(ch);
 
-            if (gdbserver_state.line_csum != (gdbserver_state.line_sum & 0xff)) {
-                trace_gdbstub_err_checksum_incorrect(gdbserver_state.line_sum, gdbserver_state.line_csum);
+            if (gdbserver_state->line_csum != (gdbserver_state->line_sum & 0xff)) {
+                trace_gdbstub_err_checksum_incorrect(gdbserver_state->line_sum, gdbserver_state->line_csum);
                 /* send NAK reply */
                 reply = '-';
                 gdb_put_buffer(&reply, 1);
-                gdbserver_state.state = RS_IDLE;
+                gdbserver_state->state = RS_IDLE;
             } else {
                 /* send ACK reply */
                 reply = '+';
                 gdb_put_buffer(&reply, 1);
-                gdbserver_state.state = gdb_handle_packet(gdbserver_state.line_buf);
+                gdbserver_state->state = gdb_handle_packet(gdbserver_state->line_buf);
             }
             break;
         default:
@@ -2473,10 +2469,10 @@ void gdb_create_default_process(GDBState *s)
     int pid;
 
 #ifdef CONFIG_USER_ONLY
-    assert(gdbserver_state.process_num == 0);
+    assert(gdbserver_state->process_num == 0);
     pid = getpid();
 #else
-    if (gdbserver_state.process_num) {
+    if (gdbserver_state->process_num) {
         pid = s->processes[s->process_num - 1].pid;
     } else {
         pid = 0;
