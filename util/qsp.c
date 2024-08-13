@@ -105,7 +105,11 @@ typedef struct QSPSnapshot QSPSnapshot;
 static size_t qsp_qemu_path_len;
 
 /* the address of qsp_thread gives us a unique 'thread ID' */
+#ifdef NO_THREAD_LOCAL
+static int qsp_thread;
+#else
 static __thread int qsp_thread;
+#endif
 
 /*
  * Call sites are the same for all threads, so we track them in a separate hash
