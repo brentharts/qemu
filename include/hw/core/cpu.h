@@ -592,7 +592,11 @@ extern CPUTailQ cpus_queue;
 #define CPU_FOREACH_SAFE(cpu, next_cpu) \
     QTAILQ_FOREACH_SAFE_RCU(cpu, &cpus_queue, node, next_cpu)
 
+#ifdef NO_THREAD_LOCAL
+extern CPUState *current_cpu;
+#else
 extern __thread CPUState *current_cpu;
+#endif
 
 /**
  * qemu_tcg_mttcg_enabled:
