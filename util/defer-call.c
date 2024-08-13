@@ -47,7 +47,11 @@ static void defer_call_atexit(Notifier *n, void *value)
 }
 
 /* This won't involve coroutines, so use __thread */
+#ifdef NO_THREAD_LOCAL
+static Notifier defer_call_atexit_notifier;
+#else
 static __thread Notifier defer_call_atexit_notifier;
+#endif
 
 /**
  * defer_call:
