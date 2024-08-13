@@ -34,7 +34,7 @@ static GDBSyscallState gdbserver_syscall_state;
  */
 static bool gdb_attached(void)
 {
-    return gdbserver_state.init && gdbserver_state.c_cpu;
+    return gdbserver_state->init && gdbserver_state->c_cpu;
 }
 
 static enum {
@@ -192,7 +192,7 @@ void gdb_handle_file_io(GArray *params, void *user_ctx)
         }
 #undef E
 
-        gdbserver_syscall_state.current_syscall_cb(gdbserver_state.c_cpu,
+        gdbserver_syscall_state.current_syscall_cb(gdbserver_state->c_cpu,
                                                    ret, err);
         gdbserver_syscall_state.current_syscall_cb = NULL;
     }
