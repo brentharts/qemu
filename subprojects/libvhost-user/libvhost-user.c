@@ -99,7 +99,7 @@
 #define DPRINT(...)                             \
     do {                                        \
         if (LIBVHOST_USER_DEBUG) {              \
-            fprintf(stderr, __VA_ARGS__);        \
+            fprintf(2, __VA_ARGS__);        \
         }                                       \
     } while (0)
 
@@ -884,7 +884,7 @@ generate_faults(VuDev *dev) {
                       dev_region->size + dev_region->mmap_offset,
                       MADV_DONTNEED);
         if (ret) {
-            fprintf(stderr,
+            fprintf(2,
                     "%s: Failed to madvise(DONTNEED) region %d: %s\n",
                     __func__, i, strerror(errno));
         }
@@ -901,7 +901,7 @@ generate_faults(VuDev *dev) {
              * Note: This can happen legally on kernels that are configured
              * without madvise'able hugepages
              */
-            fprintf(stderr,
+            fprintf(2,
                     "%s: Failed to madvise(NOHUGEPAGE) region %d: %s\n",
                     __func__, i, strerror(errno));
         }
