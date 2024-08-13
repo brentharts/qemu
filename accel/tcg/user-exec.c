@@ -34,7 +34,11 @@
 #include "internal-common.h"
 #include "internal-target.h"
 
+#ifdef NO_THREAD_LOCAL
+uintptr_t helper_retaddr;
+#else
 __thread uintptr_t helper_retaddr;
+#endif
 
 //#define DEBUG_SIGNAL
 
