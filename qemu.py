@@ -5,6 +5,7 @@ import os, sys, subprocess, json, ctypes
 target = 'riscv64-softmmu'
 if 'riscv32' in sys.argv: target = 'riscv64-softmmu'
 if '--shared' in sys.argv:
+	print("WARN: --shared is not working yet.  TODO refactor out non-relocateable globals from qapi")
 	LIBQEMU = '/tmp/libqemu_%s.so' % target
 else:
 	LIBQEMU = '/tmp/qemu_%s' % target
@@ -39,14 +40,17 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 		'./configure', 
 		'--target-list=%s' % target, 
 		'--prefix=/opt',
-		'--with-coroutine=sigaltstack',
-		'--disable-coroutine-pool',
 	]
 	if '--shared' in sys.argv:
-		cmd.append('--extra-cflags=-fPIC -DNO_THREAD_LOCAL -DSHARED_LIB')
-	for feat in get_features():
-		if feat in keep: continue
-		cmd.append('--disable-%s' % feat)
+		cmd += [
+			'--with-coroutine=sigaltstack',
+			'--disable-coroutine-pool',
+			'--extra-cflags=-fPIC -DNO_THREAD_LOCAL -DSHARED_LIB',
+		]
+		cmd.append()
+		for feat in get_features():
+			if feat in keep: continue
+			cmd.append('--disable-%s' % feat)
 	print(cmd)
 	subprocess.check_call(cmd)
 	cmd = ['make', '-j', '3']
@@ -59,7 +63,9 @@ def get_o_files():
 		if b['file'] in stubs: pass
 		elif b['file'].startswith('../stubs/'): continue
 		elif b['output'].startswith('tests/'): continue
-		elif b['file'] in skip: continue
+		#elif b['file'].startswith('../gdbstub/'): continue
+		#elif b['file'] in skip: continue
+		#elif b['file'].startswith( ('qapi/qapi-visit', '../qapi/') ): continue
 		p = os.path.join('./build', b['output'])
 		if os.path.isfile(p): obs.append( p )
 	print(obs)
@@ -69,13 +75,27 @@ if not os.path.isfile(LIBQEMU):
 	cmd = ['gcc']
 	if '--shared' in sys.argv: cmd.append('-shared')
 	cmd += ['-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
-	#subprocess.check_call(cmd)
 	os.system(' '.join(cmd))
+
+def qemu(exe, bits=64, vga=True, gdb=False, stdin=None, stdout=None, mem='256M', mach='virt'):
+	if '--test' in sys.argv: q = LIBQEMU
+	else: q = './build/qemu-system-riscv64'
+	cmd = [q, '-machine', mach, '-m', mem]
+	if vga: cmd += ['-device', 'VGA']
+	else: cmd += ['-display', 'none']
+	cmd += [ '-serial',  'stdio', '-bios', exe ]
+	if gdb: cmd += ['-gdb', 'tcp:localhost:1234,server,ipv4']
+	print(cmd)
+	return subprocess.Popen(cmd, stdin=stdin, stdout=stdout)
 
 if '--shared' in sys.argv:
 	qemu = ctypes.CDLL(LIBQEMU)
 	print(qemu)
 	print(qemu.main)
 else:
-	print(LIBQEMU)
-	subprocess.check_call([LIBQEMU]+sys.argv[1:])
+	elf = '/tmp/test.elf'
+	for arg in sys.argv:
+		if arg.endswith(('.elf', '.bin')): elf = arg
+	qemu(elf)
+
+
