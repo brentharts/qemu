@@ -73,7 +73,7 @@ typedef struct GDBState {
 } GDBState;
 
 /* lives in main gdbstub.c */
-extern GDBState gdbserver_state;
+extern GDBState *gdbserver_state;
 
 /*
  * Inline utility function, convert from int to hex and back
