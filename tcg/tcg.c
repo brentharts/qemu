@@ -236,7 +236,11 @@ bool tcg_use_softmmu;
 #endif
 
 TCGContext tcg_init_ctx;
+#ifdef NO_THREAD_LOCAL
+TCGContext *tcg_ctx;
+#else
 __thread TCGContext *tcg_ctx;
+#endif
 
 TCGContext **tcg_ctxs;
 unsigned int tcg_cur_ctxs;
