@@ -33,9 +33,11 @@
 #else
 # define tci_assert(cond) ((void)(cond))
 #endif
-
+#ifdef NO_THREAD_LOCAL
+uintptr_t tci_tb_ptr;
+#else
 __thread uintptr_t tci_tb_ptr;
-
+#endif
 static void tci_write_reg64(tcg_target_ulong *regs, uint32_t high_index,
                             uint32_t low_index, uint64_t value)
 {
