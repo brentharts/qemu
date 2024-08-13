@@ -74,7 +74,11 @@ static void get_host_pc_size(uintptr_t *host_pc, uint16_t *host_size,
 
 static const char *pretty_symbol(const struct debuginfo_query *q, size_t *len)
 {
+#ifdef NO_THREAD_LOCAL
+    static char buf[64];
+#else
     static __thread char buf[64];
+#endif
     int tmp;
 
     if (!q->symbol) {
