@@ -41,8 +41,13 @@ typedef struct RCUCloseFILE {
 static QemuMutex global_mutex;
 static char *global_filename;
 static FILE *global_file;
+#ifdef NO_THREAD_LOCAL
+static FILE *thread_file;
+static Notifier qemu_log_thread_cleanup_notifier;
+#else
 static __thread FILE *thread_file;
 static __thread Notifier qemu_log_thread_cleanup_notifier;
+#endif
 
 int qemu_loglevel;
 static bool log_per_thread;
