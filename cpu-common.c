@@ -122,7 +122,7 @@ CPUState *qemu_get_cpu(int index)
 }
 
 /* current CPU in the current thread. It is only valid inside cpu_exec() */
-#ifndef NO_THREAD_LOCAL
+#ifdef NO_THREAD_LOCAL
     CPUState *current_cpu;
 #else
     __thread CPUState *current_cpu;
