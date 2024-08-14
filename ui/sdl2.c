@@ -306,6 +306,7 @@ static void sdl_mouse_mode_change(Notifier *notify, void *data)
     }
 }
 
+int __MOUSE__[3] = {};
 static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
                                  int x, int y, int state)
 {
@@ -318,6 +319,11 @@ static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
     };
     static uint32_t prev_state;
 
+#ifdef USE_VIRT_DEBUG_ALT
+    __MOUSE__[0] = x;
+    __MOUSE__[1] = y;
+    __MOUSE__[2] = state;
+#endif
     if (prev_state != state) {
         qemu_input_update_buttons(scon->dcl.con, bmap, prev_state, state);
         prev_state = state;
