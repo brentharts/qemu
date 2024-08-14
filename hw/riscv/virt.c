@@ -57,6 +57,8 @@
 #include "hw/virtio/virtio-iommu.h"
 
 #ifdef USE_VIRT_DEBUG_ALT
+extern int __MOUSE__[3];  // from sdl.c
+
 #define TYPE_DEBUG_ALT "debug-alt"
 OBJECT_DECLARE_SIMPLE_TYPE(DebugAltState, DEBUG_ALT)
 struct DebugAltState {
@@ -67,9 +69,13 @@ struct DebugAltState {
 
 static uint64_t debug_alt_read(void *opaque, hwaddr offset, unsigned size){
     DebugAltState *s = opaque;
-    printf("DebugAltState - read(%p)\n", s);
+#ifdef DEBUG_DEBUG_ALT
+    printf("DebugAltState - read(%p) %i \n", s, (int)offset);
+    printf("__MOUSE__ : %i %i %i\n", __MOUSE__[0], __MOUSE__[1], __MOUSE__[2]);
+#endif
     uint64_t r = 0;
-    if (offset==0) r=420;
+    if (offset == 0) return __MOUSE__[0] / 2;
+    else if (offset==4) return __MOUSE__[1] / 2;
     return r;
 }
 static void debug_alt_write(void *opaque, hwaddr offset, uint64_t value, unsigned size){
@@ -94,7 +100,7 @@ static void debug_alt_realize(DeviceState *d, Error **errp) {
                           &debug_alt_ops, s,
                           "debug-alt", 0x24);
     sysbus_init_mmio(dev, &s->iomem);
-    //sysbus_init_irq(dev, &s->irq);
+    sysbus_init_irq(dev, &s->irq);
 }
 
 static void debug_alt_reset(DeviceState *dev){
