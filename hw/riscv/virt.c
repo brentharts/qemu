@@ -56,6 +56,79 @@
 #include "qapi/qapi-visit-common.h"
 #include "hw/virtio/virtio-iommu.h"
 
+#ifdef USE_VIRT_DEBUG_ALT
+#define TYPE_DEBUG_ALT "debug-alt"
+OBJECT_DECLARE_SIMPLE_TYPE(DebugAltState, DEBUG_ALT)
+struct DebugAltState {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem;
+    qemu_irq irq;
+};
+
+static uint64_t debug_alt_read(void *opaque, hwaddr offset, unsigned size){
+    DebugAltState *s = opaque;
+    printf("DebugAltState - read(%p)\n", s);
+    uint64_t r = 0;
+    if (offset==0) r=420;
+    return r;
+}
+static void debug_alt_write(void *opaque, hwaddr offset, uint64_t value, unsigned size){
+    DebugAltState *s = opaque;
+    printf("DebugAltState - write(%p)\n", s);
+}
+
+static const MemoryRegionOps debug_alt_ops = {
+    .read = debug_alt_read,
+    .write = debug_alt_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4
+    }
+};
+
+static void debug_alt_realize(DeviceState *d, Error **errp) {
+    SysBusDevice *dev = SYS_BUS_DEVICE(d);
+    DebugAltState *s = DEBUG_ALT(d);
+    memory_region_init_io(&s->iomem, OBJECT(s),
+                          &debug_alt_ops, s,
+                          "debug-alt", 0x24);
+    sysbus_init_mmio(dev, &s->iomem);
+    //sysbus_init_irq(dev, &s->irq);
+}
+
+static void debug_alt_reset(DeviceState *dev){
+    printf("DebugAltState - reset");
+}
+
+static const VMStateDescription debug_alt_vmstate = {
+    .name = TYPE_DEBUG_ALT,
+    .version_id = 1,
+    .pre_save = NULL,
+    .post_load = NULL,
+    .fields = (const VMStateField[]) {
+        VMSTATE_END_OF_LIST()
+    }
+};
+static void debug_alt_class_init(ObjectClass *klass, void *data) {
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    //device_class_set_props(dc, goldfish_rtc_properties);
+    dc->realize = debug_alt_realize;
+    dc->reset = debug_alt_reset;
+    dc->vmsd = &debug_alt_vmstate;
+}
+
+static const TypeInfo debug_alt_info = {
+    .name          = TYPE_DEBUG_ALT,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(DebugAltState),
+    .class_init    = debug_alt_class_init,
+};
+static void debug_alt_register_types(void) { type_register_static(&debug_alt_info); }
+type_init(debug_alt_register_types)
+
+#endif
+
 /* KVM AIA only supports APLIC MSI. APLIC Wired is always emulated by QEMU. */
 static bool virt_use_kvm_aia(RISCVVirtState *s)
 {
@@ -70,6 +143,9 @@ static bool virt_aclint_allowed(void)
 static const MemMapEntry virt_memmap[] = {
     [VIRT_DEBUG] =        {        0x0,         0x100 },
     [VIRT_MROM] =         {     0x1000,        0xf000 },
+#ifdef USE_VIRT_DEBUG_ALT
+    [VIRT_DEBUG_ALT] =    {    0x11000,        0x1000 },
+#endif
     [VIRT_TEST] =         {   0x100000,        0x1000 },
     [VIRT_RTC] =          {   0x101000,        0x1000 },
     [VIRT_CLINT] =        {  0x2000000,       0x10000 },
@@ -1586,6 +1662,14 @@ static void virt_machine_init(MachineState *machine)
      */
     s->fw_cfg = create_fw_cfg(machine);
     rom_set_fw(s->fw_cfg);
+
+#ifdef USE_VIRT_DEBUG_ALT
+    for (i = 0; i < 3; i++) {
+        sysbus_create_simple("debug-alt", 
+            memmap[VIRT_DEBUG_ALT].base + i * memmap[VIRT_DEBUG_ALT].size,
+            qdev_get_gpio_in(mmio_irqchip, i+1));
+    }
+#endif
 
     /* SiFive Test MMIO device */
     sifive_test_create(memmap[VIRT_TEST].base);
