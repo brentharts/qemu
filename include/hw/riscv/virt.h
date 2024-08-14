@@ -67,6 +67,9 @@ struct RISCVVirtState {
 enum {
     VIRT_DEBUG,
     VIRT_MROM,
+#ifdef USE_VIRT_DEBUG_ALT
+    VIRT_DEBUG_ALT,
+#endif
     VIRT_TEST,
     VIRT_RTC,
     VIRT_CLINT,
