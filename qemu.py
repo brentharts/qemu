@@ -35,6 +35,19 @@ def get_features():
 			feats.append(name)
 	return feats
 
+def get_o_files():
+	obs = []
+	a = json.loads( open('./build/compile_commands.json','rb').read().decode('utf-8') )
+	for b in a:
+		if b['file'] in stubs: pass
+		elif b['file'].startswith('../stubs/'): continue
+		elif b['output'].startswith('tests/'): continue
+		#elif b['file'].startswith( ('qapi/qapi-visit', '../qapi/') ): continue
+		p = os.path.join('./build', b['output'])
+		if os.path.isfile(p): obs.append( p )
+	print(obs)
+	return obs
+
 if not os.path.isdir('./build') or '--build' in sys.argv:
 	cmd = [
 		'./configure', 
@@ -45,33 +58,19 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 		cmd += [
 			'--with-coroutine=sigaltstack',
 			'--disable-coroutine-pool',
-			'--extra-cflags=-fPIC -DNO_THREAD_LOCAL -DSHARED_LIB',
+			'--extra-cflags=-fPIC -DNO_THREAD_LOCAL -DSHARED_LIB -DUSE_VIRT_DEBUG_ALT',
 		]
 		cmd.append()
 		for feat in get_features():
 			if feat in keep: continue
 			cmd.append('--disable-%s' % feat)
+	else:
+		cmd.append('--extra-cflags=-DUSE_VIRT_DEBUG_ALT')
+
 	print(cmd)
 	subprocess.check_call(cmd)
 	cmd = ['make', '-j', '3']
 	subprocess.check_call(cmd)
-
-def get_o_files():
-	obs = []
-	a = json.loads( open('./build/compile_commands.json','rb').read().decode('utf-8') )
-	for b in a:
-		if b['file'] in stubs: pass
-		elif b['file'].startswith('../stubs/'): continue
-		elif b['output'].startswith('tests/'): continue
-		#elif b['file'].startswith('../gdbstub/'): continue
-		#elif b['file'] in skip: continue
-		#elif b['file'].startswith( ('qapi/qapi-visit', '../qapi/') ): continue
-		p = os.path.join('./build', b['output'])
-		if os.path.isfile(p): obs.append( p )
-	print(obs)
-	return obs
-
-if not os.path.isfile(LIBQEMU):
 	cmd = ['gcc']
 	if '--shared' in sys.argv: cmd.append('-shared')
 	cmd += ['-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
@@ -97,5 +96,3 @@ else:
 	for arg in sys.argv:
 		if arg.endswith(('.elf', '.bin')): elf = arg
 	qemu(elf)
-
-
