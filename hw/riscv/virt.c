@@ -68,9 +68,8 @@ struct DebugAltState {
 };
 
 static uint64_t debug_alt_read(void *opaque, hwaddr offset, unsigned size){
-    DebugAltState *s = opaque;
 #ifdef DEBUG_DEBUG_ALT
-    printf("DebugAltState - read(%p) %i \n", s, (int)offset);
+    printf("DebugAltState - read %i \n", (int)offset);
     printf("__MOUSE__ : %i %i %i\n", __MOUSE__[0], __MOUSE__[1], __MOUSE__[2]);
 #endif
     uint64_t r = 0;
