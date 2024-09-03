@@ -3,7 +3,7 @@
 import os, sys, subprocess, json, ctypes
 
 target = 'riscv64-softmmu'
-if 'riscv32' in sys.argv: target = 'riscv64-softmmu'
+if '--riscv32' in sys.argv: target = 'riscv32-softmmu'
 if '--shared' in sys.argv:
 	print("WARN: --shared is not working yet.  TODO refactor out non-relocateable globals from qapi")
 	LIBQEMU = '/tmp/libqemu_%s.so' % target
@@ -48,7 +48,7 @@ def get_o_files():
 	print(obs)
 	return obs
 
-if not os.path.isdir('./build') or '--build' in sys.argv:
+def rebuild():
 	cmd = [
 		'./configure', 
 		'--target-list=%s' % target, 
@@ -77,7 +77,7 @@ if not os.path.isdir('./build') or '--build' in sys.argv:
 	os.system(' '.join(cmd))
 
 def qemu(exe, bits=64, vga=True, gdb=False, stdin=None, stdout=None, mem='256M', mach='virt'):
-	if '--test' in sys.argv: q = LIBQEMU
+	if bits==32: q = './build/qemu-system-riscv32'
 	else: q = './build/qemu-system-riscv64'
 	cmd = [q, '-machine', mach, '-m', mem]
 	if vga: cmd += ['-device', 'VGA']
@@ -87,12 +87,20 @@ def qemu(exe, bits=64, vga=True, gdb=False, stdin=None, stdout=None, mem='256M',
 	print(cmd)
 	return subprocess.Popen(cmd, stdin=stdin, stdout=stdout)
 
-if '--shared' in sys.argv:
-	qemu = ctypes.CDLL(LIBQEMU)
-	print(qemu)
-	print(qemu.main)
-else:
-	elf = '/tmp/test.elf'
+if __name__=='__main__':
+	if not os.path.isdir('./build') or '--build' in sys.argv: rebuild()
+
+	#if '--shared' in sys.argv:
+	#	qemu = ctypes.CDLL(LIBQEMU)  ## this will not work because of _thread_local
+	#	print(qemu)
+	#	print(qemu.main)
+	elf = None
 	for arg in sys.argv:
 		if arg.endswith(('.elf', '.bin')): elf = arg
-	qemu(elf)
+	if elf:
+		if '--riscv32' in sys.argv:
+			qemu(elf,bits=32)
+		else:
+			qemu(elf)
+	else:
+		print('no .elf or .bin file given')
