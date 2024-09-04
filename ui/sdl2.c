@@ -37,7 +37,7 @@
 
 #ifdef USE_VIRT_DEBUG_ALT
 	int __MOUSE__[3] = {};
-	unsigned char __KEYBOARD__[2] = {};
+	int __KEYBOARD__[3] = {};
 #endif
 
 static int sdl2_num_outputs;
@@ -399,7 +399,20 @@ static void *sdl2_win32_get_hwnd(struct sdl2_console *scon)
 
 static void handle_keydown(SDL_Event *ev)
 {
-	int win;
+#ifdef USE_VIRT_DEBUG_ALT
+	if (!ev->key.repeat){
+		__KEYBOARD__[0] = ev->key.keysym.scancode;
+		__KEYBOARD__[1] = ev->key.keysym.mod;
+		if( ev->key.keysym.sym < 128 && ev->key.keysym.sym >= 8 ){
+				//printf( "char: %c\n", (char)ev->key.keysym.sym);
+				__KEYBOARD__[2] = (char)ev->key.keysym.sym;
+		} else {
+			__KEYBOARD__[2] = 0;
+		}
+	}
+#endif
+    
+    int win;
 	struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
 	int gui_key_modifier_pressed = get_mod_state();
 	int gui_keysym = 0;
@@ -408,14 +421,7 @@ static void handle_keydown(SDL_Event *ev)
 		return;
 	}
 
-#ifdef USE_VIRT_DEBUG_ALT
-	if (!ev->key.repeat){
-		__KEYBOARD__[0] = ev->key.keysym.scancode;
-		__KEYBOARD__[1] = (unsigned char)ev->key.keysym.mod;
-	}
-#endif
-
-	if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
+    if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
 		switch (ev->key.keysym.scancode) {
 		case SDL_SCANCODE_2:
 		case SDL_SCANCODE_3:
