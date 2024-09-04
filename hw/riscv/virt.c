@@ -58,6 +58,7 @@
 
 #ifdef USE_VIRT_DEBUG_ALT
 extern int __MOUSE__[3];  // from sdl.c
+extern unsigned char __KEYBOARD__[2];  // from sdl.c
 
 #define TYPE_DEBUG_ALT "debug-alt"
 OBJECT_DECLARE_SIMPLE_TYPE(DebugAltState, DEBUG_ALT)
@@ -75,6 +76,8 @@ static uint64_t debug_alt_read(void *opaque, hwaddr offset, unsigned size){
     uint64_t r = 0;
     if (offset == 0) return __MOUSE__[0] / 2;
     else if (offset==4) return __MOUSE__[1] / 2;
+    else if (offset==8) return __KEYBOARD__[0];
+    else if (offset==12) return __KEYBOARD__[1];
     return r;
 }
 static void debug_alt_write(void *opaque, hwaddr offset, uint64_t value, unsigned size){
