@@ -7,8 +7,6 @@ if '--riscv32' in sys.argv: target = 'riscv32-softmmu'
 if '--shared' in sys.argv:
 	print("WARN: --shared is not working yet.  TODO refactor out non-relocateable globals from qapi")
 	LIBQEMU = '/tmp/libqemu_%s.so' % target
-else:
-	LIBQEMU = '/tmp/qemu_%s' % target
 
 stubs = 'target-get-monitor-def.c target-monitor-defs.c fw_cfg.c xen-hw-stub.c'.split()
 stubs = [ os.path.join('../stubs', c) for c in stubs]
@@ -49,11 +47,7 @@ def get_o_files():
 	return obs
 
 def rebuild():
-	cmd = [
-		'./configure', 
-		'--target-list=%s' % target, 
-		'--prefix=/opt',
-	]
+	cmd = ['./configure', '--target-list=%s' % target, '--prefix=/opt']
 	if '--shared' in sys.argv:
 		cmd += [
 			'--with-coroutine=sigaltstack',
@@ -71,10 +65,11 @@ def rebuild():
 	subprocess.check_call(cmd)
 	cmd = ['make', '-j', '3']
 	subprocess.check_call(cmd)
-	cmd = ['gcc']
-	if '--shared' in sys.argv: cmd.append('-shared')
-	cmd += ['-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
-	os.system(' '.join(cmd))
+
+	if '--shared' in sys.argv:
+		cmd = ['gcc', '-shared']
+		cmd += ['-o', LIBQEMU] + get_o_files() + ['-lglib-2.0', '-lm', '-lSDL2', '-lz']
+		os.system(' '.join(cmd))
 
 def qemu(exe, bits=64, vga=True, gdb=False, stdin=None, stdout=None, mem='256M', mach='virt'):
 	if bits==32: q = './build/qemu-system-riscv32'
@@ -89,11 +84,6 @@ def qemu(exe, bits=64, vga=True, gdb=False, stdin=None, stdout=None, mem='256M',
 
 if __name__=='__main__':
 	if not os.path.isdir('./build') or '--build' in sys.argv: rebuild()
-
-	#if '--shared' in sys.argv:
-	#	qemu = ctypes.CDLL(LIBQEMU)  ## this will not work because of _thread_local
-	#	print(qemu)
-	#	print(qemu.main)
 	elf = None
 	for arg in sys.argv:
 		if arg.endswith(('.elf', '.bin')): elf = arg
